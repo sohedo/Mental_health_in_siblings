@@ -1,1 +1,581 @@
-Copy paste annotated code here.
+*** Create a dataset for partially geneotyped siblings
+
+clear all
+
+*Identify families
+use "D:\e17\custom-made\muut_aineistot\\lapset_yhdetvanhemmat_18.dta", clear
+drop if shnro == ""
+
+*Mark genotyped individuals
+merge 1:1 shnro using "W:\Henrik\PRS_ID.dta" 
+drop _merge
+replace  PRS = 0 if PRS == .
+drop sfm_PRS
+
+*Initial genotyped sample N = 39,570 
+tab PRS /// is a dummy for being genotyped 1 vs not 0
+
+
+*Add full population demographics from 1970 to 2022
+merge 1:1 shnro using "W:\Henrik\full population demographics_1970_2022.dta" , keep(match master) nogen 
+
+*Drop unused variables
+drop year_of_birth country_of_birth nationality origin language source 
+
+*Exclude individuals who died before age 14. And, those before 1970 are not in the data 
+gen ageatdeath = death_year - syntyv
+drop if ageatdeath < 14
+
+*Exclude those who were under 30 when inpatient hilmo started
+drop if syntyv < 1940
+
+*Exclude those who were under average onset age when hilmo ended
+drop if syntyv > 1995
+
+*Age at last observation
+gen age2020 = 2020 - syntyv 
+
+*Define siblings "aiti means mother" "isa means father"
+rename aiti_shnro m_shnro 
+rename isa_shnro f_shnro 
+
+*Exclude individuals with unknown parents
+drop if f_shnro == ""
+drop if m_shnro == ""
+
+*** Mark families with known father mother pairs
+
+*This counts the number of siblings
+duplicates tag m_shnro f_shnro, generate(siblingsinfamily)
+
+*Generating an ID for each family
+egen famid = group ( m_shnro f_shnro )
+drop if famid == .
+
+*Remove twins by use of month of birth
+merge 1:1 shnro using "D:\e17\custom-made\muut_aineistot\syntymakuukausi_2020.dta", nogen keep(1 3)
+sort  famid syntyv syntkk
+gen str birth_year_str = string(syntyv, "%04.0f")
+gen str famid_str = string(famid)
+gen str syntkk_str = string(syntkk)
+gen str famidyearid = famid_str + "_" + birth_year_str + "_" +  syntkk_str if syntkk != .  /// There are few missings in month of birth
+drop birth_year_str famid_str syntkk_str syntkk
+sort famidyearid
+bysort   famidyearid: gen count_twins = _N
+bysort   famidyearid: gen birthorderfor_twins = _n
+summarize  count_twins if famidyearid != ""
+summarize   birthorderfor_twins if famidyearid != ""
+gen is_twin = 0  if famidyearid != ""
+replace is_twin = 1 if count_twins == 2  & famidyearid != ""
+replace is_twin = 1 if count_twins == 3  & famidyearid != ""
+replace is_twin = 1 if count_twins == 4  & famidyearid != ""
+drop if is_twin == 1 & birthorderfor_twins !=1
+bysort   famidyearid: gen count_twins2 = _N  if famidyearid != ""
+drop famidyearid count_twins birthorderfor_twins is_twin count_twins2
+
+*Cross check that there is only one twin per family
+tab count_twins2 PRS
+
+bys famid : gen sizenotwin = _N
+tab  sizenotwin
+drop sizenotwin
+ 
+**Exclude families without genetic info
+bysort famid : egen PGS_sum=sum(PRS)
+tab PGS_sum 
+
+
+* 4,794,509 observations deleted, they were added together with the covariates
+drop if PGS_sum==0
+
+*Add the polygenic scores
+drop PRS
+merge m:1 shnro using "W:\2. INVEST GENETIC DATA\INVEST GENETIC DATA (PGS)\PGS_workingfile.dta", keep (master match) nogen
+replace PRS =0 if PRS != 1 
+tab PGS_sum PRS
+
+*Update some of the pgs to avoid overfitting
+merge 1:1 shnro using "W:\Henrik\updatedPGSshort.dta", keep (master match) nogen
+drop shetu ft17_otos_osite ft17_otos_ryvas w_perus_tervtark_ana OSITE RYVAS PAINOT_UNIONI ALL_ANALYSIS_W yearofbirth child_shnro 
+
+*Select randomly genotyped sibling
+gen random_no = runiform() if PGS_sum > 1  & PRS == 1 
+tab random_no
+bysort  famid : egen random_rank =rank(random_no), field
+tab random_rank PRS if PGS_sum >1
+gen selected_sibling = 1 if random_rank == 1 & PGS_sum >1   & PRS == 1 
+replace  selected_sibling = 0 if random_rank > 1 & PGS_sum > 1  & PRS == 1 
+tab selected_sibling 
+tab PGS_sum  selected_sibling
+drop random_no random_rank PGS_sum 
+
+*Declare PGSs for the non-genotyped siblings as missing = 0
+foreach var in Bipolar_disorder_PRS Schizophrenia_GWAS_2014_PRS Schizophrenia_GWAS_2022_PRS Depression_PRS Post_traum_stress_disorder_PRS ADHD_PRS Neuroticism_PRS Opioid_dependence_PRS Mood_disorder_spectrum_PRS Alzheimer_PRS Asthma_PRS BMI_PRS T2D_PRS Educational_attainment_PRS Fertility_PRS SBP_PRS DBP_PRS Intelligence_PRS Longevity_PRS Number_of_children_PRS Age_at_first_birth_PRS Risk_taking_behaviour_PRS PC1 PC2 PC3 PC4 PC5 PC6 PC7 PC8 PC9 PC10 {
+replace `var' = . if selected_sibling == 0 
+}
+replace PRS = 0 if selected_sibling == 0 
+tab selected_sibling
+
+*Select closest born non-genotyped sibling to produce pairs
+bys famid ( syntyv ) : gen birthorder = _n
+tab birthorder 
+sort famid syntyv
+bysort famid (birthorder): gen PRS_lag = PRS[_n-1]
+bysort famid (birthorder): gen PRS_lead = PRS[_n+1]
+gen selected_sibling_noPRS = 0
+bysort famid: replace selected_sibling_noPRS = 1 if PRS == 0 &  PRS_lead == 1 
+bysort famid: replace selected_sibling_noPRS = 1 if PRS == 0 &  PRS_lag == 1 
+drop PRS_lead PRS_lag
+
+gen random_no_sib = runiform() if selected_sibling_noPRS == 1
+drop selected_sibling_noPRS
+by  famid : egen random_rank_sib =rank (random_no_sib), field
+drop selected_sibling random_no_sib 
+ 
+tab random_rank_sib
+gen selected_sibling_final = 1 if random_rank_sib == 1
+drop random_rank_sib
+tab selected_sibling_final
+
+*Check that the number of genotyped siblings matches those not genotyped
+keep if selected_sibling_final == 1 | PRS == 1
+drop selected_sibling_final
+
+*Eliminate individuals without siblings matching inclusion criteria
+bys famid  : gen size_test = _N
+tab size_test PRS
+drop if size_test != 2
+tab PRS
+drop size_test
+* 21,178 partially genotyped families / 42,356 individual in the final analysis  
+
+
+*Create another birthorder variable
+drop birthorder 
+bys famid ( syntyv ) : gen birthorder = _n
+tab birthorder PRS // almost random according to genotyped
+
+*Define cohorts 
+recode syntyv (1940/1949=1) (1950/1959=2) (1960/1969=3) (1970/1979=4) (1980/1995=5), gen(histcohort)
+label define histcohortl  1 "1940/1949" 2 "1950/1959" 3 "1960/1969" 4"1970/1979" 5"1980/1995"
+label values  histcohort histcohortl
+tab histcohort 
+
+*Code for sex female = 1 male = 0
+destring gender, replace
+gen female = gender -1
+
+
+*Add data on last observed education for both generations
+merge m:1 shnro using "W:\Henrik\edu_last.dta", keep(master match)  nogenerate
+merge m:1 m_shnro using "W:\Henrik\m_edu_last.dta", keep(master match)  nogenerate
+merge m:1 f_shnro using "W:\Henrik\f_edu_last.dta", keep(master match)  nogenerate
+merge m:1 m_shnro using "W:\Henrik\m_full population demographics_1970_2022.dta", keep(master match)  nogenerate
+merge m:1 f_shnro using "W:\Henrik\f_full population demographics_1970_2022.dta", keep(master match)  nogenerate
+
+*Very simple education categorization, based on the ututku_aste variables
+*For parents and offspring
+*Give all compulsory education
+gen education=1
+* keskiaste, 3 on lukio/ammattikoulu, 4 on erikoisammattitutkinto, laitoin senkin tähän
+replace education=2 if ututku_aste=="3"
+replace education=2 if ututku_aste=="4"
+* korkea-aste luokat 5-8
+replace education=3 if ututku_aste =="5" 
+replace education=3 if ututku_aste =="6" 
+replace education=3 if ututku_aste =="7" 
+replace education=3 if  ututku_aste =="8"
+
+label define  education_label 1"Basic" 2"Midle" 3"High" , replace
+label values  education education_label 
+label var education "Highest level of education" 
+tab education PRS
+
+gen educ_year=9 /*muuutetaan koulutusasteet koulutusvuosiksi*/
+replace educ_year=12 if ututku_aste=="3" 
+replace educ_year=14 if ututku_aste=="4" 
+replace educ_year=14 if ututku_aste=="5" 
+replace educ_year=16 if ututku_aste=="6" 
+replace educ_year=18 if ututku_aste=="7" 
+replace educ_year=21 if ututku_aste=="8" 
+
+* Give all compulsory education
+gen f_education=1
+* keskiaste, 3 on lukio/ammattikoulu, 4 on erikoisammattitutkinto, laitoin senkin tähän
+replace f_education=2 if f_ututku_aste=="3"
+replace f_education=2 if f_ututku_aste=="4"
+* korkea-aste luokat 5-8
+replace f_education=3 if f_ututku_aste =="5" 
+replace f_education=3 if f_ututku_aste =="6" 
+replace f_education=3 if f_ututku_aste =="7" 
+replace f_education=3 if  f_ututku_aste =="8"
+replace f_education = . if f_shnro == ""
+
+label values  f_education education_label 
+label var f_education "Father Highest level of education" 
+
+gen f_educ_year=9 /*muuutetaan koulutusasteet koulutusvuosiksi*/
+replace f_educ_year=12 if f_ututku_aste=="3" 
+replace f_educ_year=14 if f_ututku_aste=="4" 
+replace f_educ_year=14 if f_ututku_aste=="5" 
+replace f_educ_year=16 if f_ututku_aste=="6" 
+replace f_educ_year=18 if f_ututku_aste=="7" 
+replace f_educ_year=21 if f_ututku_aste=="8" 
+replace f_educ_year = . if f_shnro == ""
+
+
+* Give all compulsory education
+gen m_education=1
+* Keskiaste, 3 on lukio/ammattikoulu, 4 on erikoisammattitutkinto, laitoin senkin tähän
+replace m_education=2 if m_ututku_aste=="3"
+replace m_education=2 if m_ututku_aste=="4"
+* Korkea-aste luokat 5-8
+replace m_education=3 if m_ututku_aste =="5" 
+replace m_education=3 if m_ututku_aste =="6" 
+replace m_education=3 if m_ututku_aste =="7" 
+replace m_education=3 if  m_ututku_aste =="8"
+replace m_education = . if m_shnro == ""
+label values  m_education education_label 
+label var m_education "Mother Highest level of education" 
+
+
+*Combine parents education to high vs low
+gen      p_education = m_education
+replace  p_education = f_education if  m_education ==.
+replace  p_education = 2 if  f_education ==2
+replace  p_education = 2 if  m_education ==3
+replace  p_education = 2 if  f_education ==3
+replace  p_education  =  p_education -1
+label define  p_education_label 0"Low parental education" 1"Higher than basic education" , replace
+label values  p_education p_education_label 
+label var p_education "Parents' highest level of education" 
+
+
+*Add mental health diagnoses and medication use
+ merge m:1 shnro using "W:\1. COMMON DATA\hilmo_psychiatric\a1st_mental_1970_2022.dta" , keep(master match) nogenerate
+ lab var  a1st_year "first year meantal health diagnosis, any"
+ merge m:1 shnro using "W:\Henrik\wide_medication for siblings.dta", keep(master match) nogenerate
+  
+*Filling missings with zero
+foreach var in a1st_mental a1st_schizophrenia a1st_psychotic a1st_mood a1st_anxiety a1st_bipolar a1st_depressive a1st_substance a1st_behav a1st_adultpers a1st_psdev a1st_childbehav a1st_mental_o a1st_mental_i a1st_schizophrenia_o a1st_schizophrenia_i a1st_psychotic_o a1st_psychotic_i a1st_mood_o a1st_mood_i a1st_anxiety_o a1st_anxiety_i a1st_bipolar_o a1st_bipolar_i a1st_depressive_o a1st_depressive_i a1st_substance_o a1st_substance_i a1st_behav_o a1st_behav_i a1st_adultpers_o a1st_adultpers_i a1st_psdev_o a1st_psdev_i a1st_childbehav_o a1st_childbehav_i mental schizophrenia psychotic mood anxiety bipolar depressive substance behav adultpers psdev childbehav a1st_out a1st_year {
+replace `var' = 0 if missing(`var')
+}
+ 
+ foreach var in antipsychotics_total anxiolytics_total adhd_total antideps_total medcost_total medcost_total2 antipsychotics_ever anxiolytics_ever  adhd_ever antideps_ever medcost_ever {
+replace `var' = 0 if missing(`var')
+}
+
+*Round years of onset to full years
+foreach var in a1st_mental a1st_schizophrenia a1st_psychotic a1st_mood a1st_anxiety a1st_bipolar a1st_depressive a1st_substance a1st_behav a1st_adultpers a1st_psdev a1st_childbehav a1st_mental_o a1st_mental_i a1st_schizophrenia_o a1st_schizophrenia_i a1st_psychotic_o a1st_psychotic_i a1st_mood_o a1st_mood_i a1st_anxiety_o a1st_anxiety_i a1st_bipolar_o a1st_bipolar_i a1st_depressive_o a1st_depressive_i a1st_substance_o a1st_substance_i a1st_behav_o a1st_behav_i a1st_adultpers_o a1st_adultpers_i a1st_psdev_o a1st_psdev_i a1st_childbehav_o a1st_childbehav_i  {
+replace `var' = round(`var')
+}
+ 
+*Adding parental mental health diagnosis (ever), any
+merge m:1 m_shnro using "W:\Henrik\m_mental.dta", nogen keep(1 3)
+replace m_mental = 0 if m_mental == .
+merge m:1 f_shnro using "W:\Henrik\f_mental.dta", nogen keep(1 3)
+replace f_mental = 0 if f_mental == .
+gen p_mental = m_mental
+replace p_mental = f_mental if m_mental == 0
+drop m_mental f_mental
+
+*Shorthen PGS to avoid errors
+rename SCZ_Ripke_2014_nofin_PRS_scaled Schiz_PGS
+rename Risk_taking_behaviour_PRS Risk_PGS
+rename EA_OkbayExclFinnGen_PRS_scaled EA_PGS
+
+*Produce GxE interactions product terms
+    gen edu_bipo = Bipolar_disorder_PRS * p_education
+	gen edu_risk = Risk_PGS * p_education
+    gen edu_mood = Mood_disorder_spectrum_PRS * p_education 
+	gen edu_schiz = Schiz_PGS * p_education 
+	gen edu_depress = DEP6_PRS_scaled * p_education
+	gen edu_neuro = Neuroticism_PRS * p_education 
+	gen edu_edu = EA_PGS * p_education 
+    gen edu_adhd = ADHD_PRS * p_education
+
+*Logarithmic transformation of total psychotropic medication costs
+gen medcostl = 1 if  medcost_total == .
+replace  medcostl = medcost_total  if medcost_total != .
+gen lmedcost = log(medcostl)
+
+*Combine psychosis and schizophrenia diagnoses to match GWAS
+gen a1st_schizpsychotic = a1st_psychotic
+replace a1st_schizpsychotic = a1st_schizophrenia  if a1st_schizophrenia < a1st_psychotic & a1st_schizophrenia !=0
+gen  a1st_schizpsychotic = 0 if a1st_schizpsychotic == 0
+replace  a1st_schizpsychotic = 1 if a1st_schizpsychotic > 0
+summarize a1st_schizpsychotic
+
+* Reproduced medication use (ever) variable from total count
+drop antipsychotics_ever anxiolytics_ever adhd_ever antideps_ever 
+gen antipsychotics_ever = 0
+replace antipsychotics_ever = 1 if antipsychotics_total > 0 
+gen anxiolytics_ever = 0
+replace anxiolytics_ever = 1 if anxiolytics_total > 0 
+gen adhd_ever = 0
+replace adhd_ever = 1 if adhd_total > 0 
+gen antideps_ever = 0
+replace antideps_ever = 1 if antideps_total > 0 
+
+*Define generation based on mothers year of birth
+tab m_year_of_birth
+gen generation = 0
+replace generation = 1 if m_year_of_birth > 1933
+label define generationl 0 "Old cohort" 1 "Young cohort" , replace
+label values generation generationl
+tab generation
+
+*Create a variable for the interaction between generation and parental education
+gen genXses = .
+replace genXses = 1 if p_education == 0 & generation == 0
+replace genXses = 2 if p_education == 1 & generation == 0
+replace genXses = 3 if p_education == 0 & generation == 1
+replace genXses = 4 if p_education == 1 & generation == 1
+
+label define genXsesl 1 "Low parental education_old cohort"  2 "High parental education_old cohort" 3 "Low parental education_young cohort" 4 "High parental education_young cohort", replace
+label values genXses genXsesl
+tab genXses
+
+
+*Take into account that a sibling could have died before the other was diagnosed
+*The below code excludes families where any sibling died before the other got diagnosed, separately for each diagnosis.
+sort famid  birthorder
+gen death_age_sib = .
+by famid: replace death_age_sib = ageatdeath[_n+1] if birthorder == 1 & _N ==2
+by famid: replace death_age_sib = ageatdeath[_n-1] if birthorder == 2 & _N ==2
+tab death_age_sib
+gen death_year_sib = .
+by famid: replace death_year_sib = death_year[_n+1] if birthorder == 1 & _N ==2
+by famid: replace death_year_sib = death_year[_n-1] if birthorder == 2 & _N ==2
+tab death_year_sib
+gen deathdistance=.
+replace deathdistance = death_year_sib - death_year
+tab deathdistance
+tab ageatdeath
+
+*Mental, any
+gen diag_year_sib_mental = .
+by famid: replace diag_year_sib_mental = a1st_mental[_n+1] if birthorder == 1 & _N ==2
+by famid: replace diag_year_sib_mental = a1st_mental[_n-1] if birthorder == 2 & _N ==2
+tab diag_year_sib_mental
+gen death_before_diagnosis_mental = 0
+replace death_before_diagnosis_mental = 1 if death_year < diag_year_sib_mental & a1st_mental == 0
+tab death_before_diagnosis_mental
+bysort famid: egen death_family = max(death_before_diagnosis_mental)
+tab death_family
+replace death_before_diagnosis_mental = death_family
+drop death_family diag_year_sib_mental
+replace a1st_mental = . if death_before_diagnosis_mental == 1
+replace mental = . if death_before_diagnosis_mental == 1
+
+*Mood
+gen diag_year_sib_mood = .
+by famid: replace diag_year_sib_mood = a1st_mood[_n+1] if birthorder == 1 & _N ==2
+by famid: replace diag_year_sib_mood = a1st_mood[_n-1] if birthorder == 2 & _N ==2
+gen death_before_diagnosis_mood = 0
+replace death_before_diagnosis_mood = 1 if death_year < diag_year_sib_mood &   a1st_mood == 0
+tab death_before_diagnosis_mood
+bysort famid: egen death_family_mood = max(death_before_diagnosis_mood)
+replace death_before_diagnosis_mood = death_family_mood
+drop death_family_mood diag_year_sib_mood
+replace a1st_mood = . if death_before_diagnosis_mood == 1
+replace mood = . if death_before_diagnosis_mood == 1
+
+*Depressed
+gen diag_year_sib_depressive = .
+by famid: replace diag_year_sib_depressive = a1st_depressive[_n+1] if birthorder == 1 & _N ==2
+by famid: replace diag_year_sib_depressive = a1st_depressive[_n-1] if birthorder == 2 & _N ==2
+gen death_before_diagnosis_depr= 0
+replace death_before_diagnosis_depr= 1 if death_year < diag_year_sib_depressive &    a1st_depressive == 0
+tab death_before_diagnosis_depr
+bysort famid: egen death_family_depressive = max(death_before_diagnosis_depr)
+replace death_before_diagnosis_depr= death_family_depressive
+drop death_family_depressive diag_year_sib_depressive
+replace a1st_depressive = . if death_before_diagnosis_depr == 1
+replace depressive = . if death_before_diagnosis_depr == 1
+replace antideps_ever = . if death_before_diagnosis_depr == 1
+
+*Bipolar
+gen diag_year_sib_bipolar = .
+by famid: replace diag_year_sib_bipolar = a1st_bipolar[_n+1] if birthorder == 1 & _N ==2
+by famid: replace diag_year_sib_bipolar = a1st_bipolar[_n-1] if birthorder == 2 & _N ==2
+gen death_before_diagnosis_bipolar = 0
+replace death_before_diagnosis_bipolar = 1 if death_year < diag_year_sib_bipolar & a1st_bipolar == 0
+bysort famid: egen death_family_bipolar = max(death_before_diagnosis_bipolar)
+replace death_before_diagnosis_bipolar = death_family_bipolar
+drop death_family_bipolar diag_year_sib_bipolar
+replace a1st_bipolar = . if death_before_diagnosis_bipolar == 1
+replace bipolar = . if death_before_diagnosis_bipolar == 1
+
+*Substance
+gen diag_year_sib_substance = .
+by famid: replace diag_year_sib_substance = a1st_substance[_n+1] if birthorder == 1 & _N ==2
+by famid: replace diag_year_sib_substance = a1st_substance[_n-1] if birthorder == 2 & _N ==2
+gen death_before_diagnosis_substance = 0
+replace death_before_diagnosis_substance = 1 if death_year < diag_year_sib_substance & a1st_substance == 0
+bysort famid: egen death_family_substance = max(death_before_diagnosis_substance)
+replace death_before_diagnosis_substance = death_family_substance
+drop death_family_substance diag_year_sib_substance
+replace a1st_substance = . if death_before_diagnosis_substance == 1
+replace substance = . if death_before_diagnosis_substance == 1
+   
+*Schizpsychotic
+gen diag_year_sib_a1st_schizpsychotic = .
+by famid: replace diag_year_sib_a1st_schizpsychotic = a1st_schizpsychotic[_n+1] if birthorder == 1 & _N ==2
+by famid: replace diag_year_sib_a1st_schizpsychotic = a1st_schizpsychotic[_n-1] if birthorder == 2 & _N ==2
+gen death_before_diagnosis_schizpsy = 0
+replace death_before_diagnosis_schizpsy = 1 if death_year < diag_year_sib_a1st_schizpsychotic & a1st_schizpsychotic == 0
+bysort famid: egen death_family_schizpsy = max(death_before_diagnosis_schizpsy)
+replace death_before_diagnosis_schizpsy = death_family_schizpsy
+drop death_family_schizpsy diag_year_sib_a1st_schizpsychotic
+replace a1st_schizpsychotic = . if death_before_diagnosis_schizpsy == 1
+replace a1st_schizpsychotic = . if death_before_diagnosis_schizpsy == 1
+replace antipsychotics_ever = . if death_before_diagnosis_schizpsy == 1
+
+*Anxiety
+gen diag_year_sib_anxiety = .
+by famid: replace diag_year_sib_anxiety = a1st_anxiety[_n+1] if birthorder == 1 & _N ==2
+by famid: replace diag_year_sib_anxiety = a1st_anxiety[_n-1] if birthorder == 2 & _N ==2
+gen death_before_diagnosis_anxiety = 0
+replace death_before_diagnosis_anxiety = 1 if death_year < diag_year_sib_anxiety & a1st_anxiety == 0
+bysort famid: egen death_family_anxiety  = max(death_before_diagnosis_anxiety)
+replace death_before_diagnosis_anxiety = death_family_anxiety 
+drop death_family_anxiety diag_year_sib_anxiety
+replace a1st_anxiety = . if death_before_diagnosis_anxiety == 1
+replace anxiety = . if death_before_diagnosis_anxiety == 1
+replace anxiolytics_ever = . if death_before_diagnosis_anxiety == 1
+
+*ADHD
+gen diag_year_sib_adhd = .
+by famid: replace diag_year_sib_adhd = a1st_childbehav[_n+1] if birthorder == 1 & _N ==2
+by famid: replace diag_year_sib_adhd = a1st_childbehav[_n-1] if birthorder == 2 & _N ==2
+gen death_before_diagnosis_adhd = 0
+replace death_before_diagnosis_adhd = 1 if death_year < diag_year_sib_adhd & a1st_childbehav == 0
+bysort famid: egen death_family_adhd  = max(death_before_diagnosis_adhd)
+replace death_before_diagnosis_adhd = death_family_adhd 
+drop death_family_adhd diag_year_sib_adhd
+replace a1st_childbehav = . if death_before_diagnosis_adhd == 1
+replace childbehav = . if death_before_diagnosis_adhd == 1
+replace adhd_ever = . if death_before_diagnosis_adhd == 1
+
+
+*Discordant siblings 
+*Discordant based on diagnoses
+*Figure 1 data
+sort famid  birthorder
+bysort famid: egen  fam_diag_sum_mental = total(mental) 
+gen discordant_mental = 0
+replace  discordant_mental = 1 if fam_diag_sum_mental == 1 
+gen family_mental = 0
+replace  family_mental = 1 if fam_diag_sum_mental == 1 
+replace  family_mental = 2 if fam_diag_sum_mental == 2 
+label define familydiscordantl 0 "No mental illness"  1 "Discordant" 2 "Dual mental illness" , replace
+label values family_mental familydiscordantl
+tab family_mental p_education if PRS == 1  ,col
+
+*For discussion, information on parental psychopanthology
+tab family_mental  if PRS == 1 
+
+bysort famid: egen  fam_diag_sum_substance = total(substance) 
+gen discordant_substance = 0
+replace  discordant_substance = 1 if fam_diag_sum_substance == 1
+gen family_substance = 0
+replace  family_substance = 1 if fam_diag_sum_substance == 1  
+replace  family_substance = 2 if fam_diag_sum_substance == 2 
+label values family_substance familydiscordantl
+tab family_substance p_education if PRS == 1  ,col
+
+bysort famid: egen  fam_diag_sum_a1st_schizpsychotic = total(a1st_schizpsychotic) 
+gen discordant_a1st_schizpsychotic = 0
+replace  discordant_a1st_schizpsychotic = 1 if fam_diag_sum_a1st_schizpsychotic == 1
+gen family_a1st_schizpsychotic = 0
+replace  family_a1st_schizpsychotic = 1 if fam_diag_sum_a1st_schizpsychotic == 1 
+replace  family_a1st_schizpsychotic = 2 if fam_diag_sum_a1st_schizpsychotic == 2 
+label values family_a1st_schizpsychotic familydiscordantl
+tab family_a1st_schizpsychotic p_education if PRS == 1 ,col
+
+
+bysort famid: egen  fam_diag_sum_mood = total(mood) 
+gen discordant_mood = 0
+replace  discordant_mood  = 1 if fam_diag_sum_mood == 1 
+gen family_mood = 0
+replace  family_mood  = 1 if fam_diag_sum_mood == 1 
+replace  family_mood  = 2 if fam_diag_sum_mood == 2 
+label values family_mood familydiscordantl
+tab family_mood p_education if PRS == 1 ,col
+
+bysort famid: egen  fam_diag_sum_depr = total(depressive) 
+gen discordant_depr = 0
+replace  discordant_depr  = 1 if fam_diag_sum_depr == 1 
+gen family_depr = 0
+replace  family_depr  = 1 if fam_diag_sum_depr == 1 
+replace  family_depr  = 2 if fam_diag_sum_depr == 2
+label values family_depr familydiscordantl
+tab family_depr p_education if PRS == 1  ,col
+
+bysort famid: egen  fam_diag_sum_bipol = total(bipolar) 
+gen discordant_bipol = 0
+replace  discordant_bipol  = 1 if fam_diag_sum_bipol == 1
+gen family_bipol = 0
+replace  family_bipol  = 1 if fam_diag_sum_bipol == 1
+replace  family_bipol  = 2 if fam_diag_sum_bipol == 2 
+label values family_bipol familydiscordantl
+tab family_bipol p_education if PRS == 1  ,col
+
+bysort famid: egen  fam_diag_sum_anxiety = total(anxiety) 
+gen discordant_anxiety = 0
+replace  discordant_anxiety = 1 if fam_diag_sum_anxiety == 1 
+gen family_anxiety = 0
+replace  family_anxiety = 1 if fam_diag_sum_anxiety == 1 
+replace  family_anxiety = 2 if fam_diag_sum_anxiety == 2 
+label values family_anxiety familydiscordantl
+tab family_anxiety p_education if PRS == 1  ,col
+
+bysort famid: egen  fam_diag_sum_adhd = total(childbehav) 
+gen discordant_adhd = 0
+replace  discordant_adhd = 1 if fam_diag_sum_adhd == 1 
+gen family_adhd = 0 
+replace  family_adhd = 1 if fam_diag_sum_adhd == 1 
+replace  family_adhd = 2 if fam_diag_sum_adhd == 2 
+label values family_adhd familydiscordantl
+tab family_adhd p_education if PRS == 1  ,col
+
+*Discordant based on medication 
+bysort famid: egen  fam_diag_sum_schizpsy_med = total(antipsychotics_ever) 
+gen discordant_a1st_schizpsychotic_med = 0
+replace  discordant_a1st_schizpsychotic_med = 1 if fam_diag_sum_schizpsy_med == 1 
+gen family_a1st_schizpsychotic_med = 0
+replace  family_a1st_schizpsychotic_med = 1 if fam_diag_sum_schizpsy_med == 1 
+replace  family_a1st_schizpsychotic_med = 2 if fam_diag_sum_schizpsy_med == 2 
+label values family_a1st_schizpsychotic_med familydiscordantl
+tab family_a1st_schizpsychotic_med p_education if PRS == 1  ,col
+
+bysort famid: egen  fam_diag_sum_anxiety_med = total(anxiolytics_ever ) 
+gen discordant_anxiety_med = 0
+replace  discordant_anxiety_med = 1 if fam_diag_sum_anxiety_med == 1 
+gen family_anxiety_med = 0
+replace  family_anxiety_med = 1 if fam_diag_sum_anxiety_med == 1 
+replace  family_anxiety_med = 2 if fam_diag_sum_anxiety_med == 2 
+label values family_anxiety_med familydiscordantl
+tab family_anxiety_med p_education if PRS == 1  ,col
+
+bysort famid: egen  fam_diag_sum_depr_med = total(antideps_ever) 
+gen discordant_depr_med = 0
+replace  discordant_depr_med  = 1 if fam_diag_sum_depr_med == 1 
+gen family_depr_med = 0
+replace  family_depr_med  = 1 if fam_diag_sum_depr_med == 1 
+replace  family_depr_med  = 2 if fam_diag_sum_depr_med == 2 
+label values family_depr_med familydiscordantl
+tab family_depr_med p_education if PRS == 1  ,col
+ 
+bysort famid: egen  fam_diag_sum_adhd_med = total(adhd_ever) 
+gen discordant_adhd_med = 0
+replace  discordant_adhd_med = 1 if fam_diag_sum_adhd_med == 1 
+gen family_adhd_med = 0 
+replace  family_adhd_med = 1 if fam_diag_sum_adhd_med == 1 
+replace  family_adhd_med = 2 if fam_diag_sum_adhd_med == 2 
+label values family_adhd_med familydiscordantl
+tab family_adhd_med p_education if PRS == 1  ,col
+
+save "W:\Henrik\PhenotypeDifferenceModel2025_age25_alive.dta", replace 
+
