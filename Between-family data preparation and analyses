@@ -1,1 +1,306 @@
+***Code do compare the phenotype differences model to between family LPM results 
+ 
+**load data
+ clear all
+ use "W:\Henrik\remake 120k 2025.dta"
+ *drop none-genotyped individuals
+ drop if sfm_PRS != 3
+ 
+**coding of main variables is identical to sibling dataset
+
+**the following lines show how variables used aditionally in the sample of unrelated individuals
+
+
+*adding whether parents have ever been diagnoses with a mental illness
+*alreadt in the data 
+*merge m:1 m_shnro using "W:\Henrik\m_mental.dta", keep(match master) nogen 
+*merge m:1 f_shnro using "W:\Henrik\f_mental.dta", keep(match master) nogen 
+*gen p_mental = .
+*replace p_mental = 0  if m_mental != .
+*replace p_mental = 0  if f_mental != .
+*replace p_mental = 1  if m_mental == 1
+*replace p_mental = 1  if f_mental == 1
+
+*label define  p_mental_label 0"No parental mental illness" 1"Parents had a mental health diagnosis" , replace
+*label values  p_mental p_mental_label 
+
+
+*Exclude individuals who died before age 14. And, those died before 1970 are not in the data 
+gen ageatdeath = kuolv - syntyv
+drop if ageatdeath < 14
+*(0 observations deleted)
+
+*Exclude those who were under 30 when inpatient hilmo started
+drop if syntyv < 1940
+*(7,431 observations deleted)
+
+*Exclude those who were under average onset age when hilmo ended
+drop if syntyv > 1995
+*(30 observations deleted)
+
+*age at last observation
+gen age2020 = 2020 - syntyv 
+
+*shorthen PGS to avoid error messages
+rename SCZ_Ripke_2014_nofin_PRS_scaled  Schiz_PGS
+rename Risk_taking_behaviour_PRS        Risk_PGS
+rename EA_OkbayExclFinnGen_PRS_scaled   EA_PGS
+
+*Produce GxE interactions product terms
+    gen edu_bipo    = Bipolar_disorder_PRS * p_education
+	gen edu_risk    = Risk_PGS * p_education
+    gen edu_mood    = Mood_disorder_spectrum_PRS * p_education 
+	gen edu_schiz   = Schiz_PGS * p_education 
+	gen edu_depress = DEP6_PRS_scaled * p_education
+	gen edu_neuro   = Neuroticism_PRS * p_education 
+	gen edu_edu     = EA_PGS * p_education 
+    gen edu_adhd    = ADHD_PRS * p_education
+	
+*Logarithmic version of total psychotropic medication costs in years
+gen      medcostl = 1 if  years_psychotropicmed == .
+replace  medcostl = years_psychotropicmed  if years_psychotropicmed != .
+gen      lmedcost = log(medcostl)
+
+*Combine psychotropic and schizzophrenia diagnoses to match original GWAS
+gen     a1st_schizpsychotic = a1st_psychotic
+replace a1st_schizpsychotic = a1st_schizophrenia  if a1st_schizophrenia < a1st_psychotic & a1st_schizophrenia !=.
+tab     a1st_schizpsychotic
+gen     schizpsychotic = 0 if a1st_schizpsychotic == .
+replace schizpsychotic = 1 if a1st_schizpsychotic != .
+tab     schizpsychotic
+sum     schizpsychotic
+
+*Define generation based on mother's year of birth
+tab m_year_of_birth
+gen generation = 0
+replace generation = 1 if m_year_of_birth > 1933
+label define generationl 0 "Old cohort" 1 "Young cohort" , replace
+label values generation generationl
+tab generation
+
+*Prepare region of birth for analyses
+destring smkunta, replace
+
+*Outcomes
+*This is to get prevalency, eg. for the relative increases 
+summarize mental substance schizpsychotic antipsychotics_ever mood depressive antideps_ever bipolar anxiety anxiolytics_ever childbehav  adhd_ever 
+
+*List of covariates
+*female i.p_education  i.p_mental i.smkunta C1-C10
+*Sex female = 1 
+*Parental education high/more than basic education = 1
+*Parental psychopathology combined
+*Region of birth
+*Top ten principal components
+
+
+
+
+*add weights
+merge 1:1 shnro using "W:\weight_project\Corrected_Weights\weights_prs.dta" , keep(match master) nogen 
+
+sort  weights
+gen   w_trim = weights
+local low    = r(p1)
+local high   = r(p99)
+
+replace w_trim = max(`low', min(weights, `high'))
+summarize w_trim, detail
+gen w_final = w_trim / r(mean)
+summarize w_final
+*repeat all analyses appy weights
+
+
+
+
+****Between-families prediction
+
+***Ever diagnosed with a meantal illness
+** Mental, any
+*raw associations
+regress  mental Schiz_PGS syntyv   i.female [pweight = w_final]
+estimates store model21, title ("mental")
+
+*with controls 
+regress  mental Schiz_PGS syntyv   i.female  i.p_mental i.p_education   i.genesample  i.smkunta  i.smkunta C1-C10  [pweight = w_final]
+estimates store model22, title ("mental")
+
+*naive GxE
+regress  mental Schiz_PGS syntyv   i.female  i.p_mental i.p_education   i.genesample  i.smkunta  i.smkunta  C1-C10  edu_schiz  [pweight = w_final]
+estimates store model23, title ("mental")
+
+
+*Substance
+*raw associations
+regress  substance Risk_PGS syntyv   i.female [pweight = w_final]
+estimates store model81, title ("substance")
+
+*with controls 
+regress  substance Risk_PGS syntyv  i.female   i.p_mental i.p_education   i.genesample   i.smkunta C1-C10  [pweight = w_final]
+estimates store model82, title ("substance")
+
+*naive GxE
+regress  substance Risk_PGS syntyv   i.female  i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  edu_risk [pweight = w_final]
+estimates store model83, title ("substance")
+
+
+*Schizophrenia
+*raw associations
+regress schizpsychotic Schiz_PGS syntyv   i.female [pweight = w_final]
+estimates store model41, title ("szpsy")
+
+*with controls 
+regress schizpsychotic Schiz_PGS syntyv   i.female  i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  [pweight = w_final]
+estimates store model42, title ("szpsy")
+
+*naive GxE
+regress schizpsychotic Schiz_PGS syntyv   i.female  i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  edu_schiz [pweight = w_final]
+estimates store model43, title ("szpsy")
+
+
+*Antipsychotics
+*raw associations
+reg antipsychotics_ever Schiz_PGS syntyv   i.female [pweight = w_final]
+estimates store model181, title ("lantipsychotics")
+
+ *with controls 
+reg antipsychotics_ever Schiz_PGS syntyv  i.female   i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  [pweight = w_final]
+estimates store model182, title ("lantipsychotics")
+
+	*naive GxE
+reg antipsychotics_ever Schiz_PGS syntyv  i.female   i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  edu_schiz [pweight = w_final]
+estimates store model183, title ("lantipsychotics")
+
+
+*Mood
+*raw associations
+regress  mood Mood_disorder_spectrum_PRS syntyv   i.female [pweight = w_final]
+estimates store model111, title ("mood")
+
+*with controls 
+regress  mood Mood_disorder_spectrum_PRS syntyv   i.female  i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  [pweight = w_final]
+estimates store model112, title ("mood")
+
+*naive GxE	
+regress  mood Mood_disorder_spectrum_PRS syntyv   i.female  i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  edu_mood [pweight = w_final]
+estimates store model113, title ("mood")
+
+
+*Depression
+*raw associations
+regress  depressive DEP6_PRS_scaled syntyv   i.female [pweight = w_final]
+estimates store model241, title ("depressive")
+
+*with controls 
+regress  depressive DEP6_PRS_scaled syntyv   i.female   i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  [pweight = w_final]
+estimates store model242, title ("depressive")
+
+*naive GxE
+regress  depressive DEP6_PRS_scaled syntyv   i.female   i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  edu_depress [pweight = w_final]
+estimates store model243, title ("depressive")
+
+
+*Antidepressants 
+*raw associations
+reg antideps_ever DEP6_PRS_scaled syntyv   i.female [pweight = w_final]
+estimates store model481, title ("lantideps")
+
+*with controls 
+reg antideps_ever DEP6_PRS_scaled syntyv  i.female   i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  [pweight = w_final]
+estimates store model482, title ("lantideps")
+
+*naive GxE
+reg antideps_ever DEP6_PRS_scaled syntyv  i.female   i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  edu_depress [pweight = w_final]
+estimates store model483, title ("lantideps")
+
+
+**Bipolar 
+*raw associations
+regress  bipolar Bipolar_disorder_PRS syntyv   i.female  [pweight = w_final]
+estimates store model291, title ("bipolar")
+
+*with controls 
+regress  bipolar Bipolar_disorder_PRS syntyv   i.female  i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  [pweight = w_final]
+estimates store model292, title ("bipolar")
+
+*naive GxE	
+regress  bipolar Bipolar_disorder_PRS syntyv   i.female  i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  edu_bipo  [pweight = w_final]
+estimates store model293, title ("bipolar")
+
+
+*Anxiety
+*raw associations
+regress  anxiety Neuroticism_PRS syntyv   i.female  [pweight = w_final]
+estimates store model171, title ("anxiety")
+
+*with controls 
+regress  anxiety Neuroticism_PRS syntyv   i.female  i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  [pweight = w_final]
+estimates store model172, title ("anxiety")
+
+*naive GxE
+regress  anxiety Neuroticism_PRS syntyv   i.female  i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  edu_neuro  [pweight = w_final]
+estimates store model173, title ("anxiety")
+ 
+
+*Anxiolytics
+*raw associations
+reg anxiolytics_ever Neuroticism_PRS syntyv   i.female  [pweight = w_final]
+estimates store model491, title ("lanxiolytics")
+
+*with controls 
+reg anxiolytics_ever Neuroticism_PRS syntyv  i.female   i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  [pweight = w_final]
+estimates store model492, title ("lanxiolytics")
+
+*naive GxE
+reg anxiolytics_ever Neuroticism_PRS syntyv  i.female   i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  edu_neuro  [pweight = w_final]
+estimates store model493, title ("lanxiolytics")
+
+
+**ADHD
+*raw associations
+regress  childbehav ADHD_PRS syntyv   i.female [pweight = w_final]
+estimates store model251 , title ("childbehav")
+ *with controls 
+regress  childbehav ADHD_PRS syntyv    i.female  i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  [pweight = w_final]
+estimates store model252, title ("childbehav")
+	*naive GxE
+regress  childbehav ADHD_PRS syntyv    i.female  i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  edu_adhd [pweight = w_final]
+estimates store model253 , title ("childbehav")
+
+
+*Psychostimulats
+*raw associations
+reg adhd_ever ADHD_PRS syntyv   i.female [pweight = w_final]
+estimates store model501, title ("ladhd")
+
+*with controls 
+reg adhd_ever ADHD_PRS syntyv  i.female   i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  [pweight = w_final]
+estimates store model502, title ("ladhd")
+
+*naive GxE
+reg adhd_ever ADHD_PRS syntyv  i.female   i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  edu_adhd [pweight = w_final]
+estimates store model503, title ("ladhd")
+
+
+
+*Results tables between family with binary outcomes
+*Raw results with basic controls
+esttab   model21  model81 model41 model181 model111 model241 model481 model291 model171 model491  model251   model501 ///
+using "W:\Henrik\regression_results_binary_raw_w.csv", replace ///
+r2  se label nodepvars compress
+ 
+*Results with all controls
+esttab   model22  model82 model42 model182 model112 model242 model482 model292  model172 model492 model252 model502 ///
+using "W:\Henrik\regression_results_binary_controls_w.csv", replace ///
+r2 se label nodepvars compress
+
+*GxE interaction results
+esttab   model23 model83 model43 model183 model113 model243 model483 model293 model173 model493 model253  model503 ///
+using "W:\Henrik\regression_results_binary_GXE.csv_w", replace ///
+r2 se label nodepvars compress
+ 
+*Results with controls beta coefficients to make relative statements
+esttab   model22  model82 model42 model182 model112 model242 model482 model292 model172 model492 model252 model502 ///
+using "W:\Henrik\regression_results_binary_controls_beta_w.csv", replace  beta ///
+r2 se label nodepvars compress
 
