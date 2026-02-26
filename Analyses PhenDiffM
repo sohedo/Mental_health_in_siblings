@@ -1,1 +1,1192 @@
-Copy paste annotated code here.
+***********************************************************************************
+*** SETUP Phenotype Differences Model 
+***********************************************************************************
+
+clear all
+set more off, perm
+set maxvar 30000
+set matsize 5000
+capture set trace off
+set seed 19146
+
+***********************************************************************************
+*** DEFINE PROGRAM
+***********************************************************************************
+
+capture program drop phendiff
+
+program define phendiff
+syntax varlist(min=2 max=2) [if] [, Fam(varname) RHO(real 0.5) RESidualize(varlist)]
+
+	preserve	
+		local out: word 1 of `varlist'
+	 
+		local g: word 2 of `varlist'
+			
+		quietly {
+			
+			if "`if'"!="" {
+				keep `if'
+			}
+			
+			***drop families without exactly two siblings			
+			egen fam_n = count(`fam'), by(`fam')
+			keep if fam_n==2 			
+			
+			***drop families without exactly two phenotypes observed
+			egen fam_n_`out' = count(`out'), by(`fam')
+			keep if fam_n_`out'==2 
+			
+			***drop families without exactly one genotype observed
+			egen fam_n_`g' = count(`g'), by(`fam')
+			keep if fam_n_`g'==1 						
+			
+			***generate sibling phenotype difference			
+			egen fam_mn_`out' = mean(`out'), by(`fam')
+			gen diff_`out' = (`out' - fam_mn_`out') * 2
+			
+			***generate rho-transformed genetic predictor		
+			gen `g'_X_rho = (1 - `rho') * `g'
+		}
+
+		***run phenotype differences regression		
+		if "`residualize'"=="" {
+			display "reg diff_`out' `g'_X_rho"
+			reg diff_`out' `g'_X_rho
+		}
+		if "`residualize'"!="" {
+			quietly {
+				foreach var of varlist `residualize' {
+			
+					egen fam_n_`var' = count(`var'), by(`fam')
+					keep if fam_n_`var'==2 	// ***drop families without exactly two of each covariate
+					
+					egen fam_mn_`var' = mean(`var'), by(`fam')
+					gen diff_`var' = (`var' - fam_mn_`var') * 2 // ***generate sibling covariate difference
+					replace `var' =  diff_`var' 			
+				}
+				
+				reg diff_`out' `residualize'
+				predict res_diff_`out' if e(sample), residuals
+			}
+			display "reg res_diff_`out' `g'_X_rho"					
+			reg res_diff_`out' `g'_X_rho
+		}	
+	restore
+
+display "__________"	
+	
+end
+
+***********************************************************************************
+*** RUN REGRESSIONS
+***********************************************************************************
+
+display"`c(pwd)'"
+
+*Data signature
+use "W:\Henrik\PhenotypeDifferenceModel2025_age25_alive.dta" , clear
+
+*Descriptives
+summarize syntyv
+summarize syntyv female p_education 
+ 
+tab female
+tab p_education 
+tab syntyv p_education
+tab p_education if  generation==0
+tab p_education if  generation==1
+  
+summarize  mental  substance schizpsychotic antipsychotics_ever mood depressive antideps_ever bipolar anxiety anxiolytics_ever childbehav   adhd_ever 
+summarize  mental  substance schizpsychotic antipsychotics_ever mood depressive antideps_ever bipolar anxiety anxiolytics_ever childbehav   adhd_ever  if  generation==0
+summarize  mental  substance schizpsychotic antipsychotics_ever mood depressive antideps_ever bipolar anxiety anxiolytics_ever childbehav   adhd_ever if  generation==1
+
+tab1 mental  substance schizpsychotic antipsychotics_ever mood depressive antideps_ever bipolar anxiety anxiolytics_ever childbehav   adhd_ever 
+
+
+*means % and SD 
+ci means  Bipolar_disorder_PRS Schiz_PGS DEP6_PRS_scaled  ADHD_PRS Neuroticism_PRS Mood_disorder_spectrum_PRS Risk_PGS   
+ci means     Bipolar_disorder_PRS Schiz_PGS DEP6_PRS_scaled  ADHD_PRS Neuroticism_PRS Mood_disorder_spectrum_PRS Risk_PGS   if p_education == 1
+ci means     Bipolar_disorder_PRS Schiz_PGS DEP6_PRS_scaled  ADHD_PRS Neuroticism_PRS Mood_disorder_spectrum_PRS Risk_PGS  if p_education == 0
+ci means    mental  substance schizpsychotic antipsychotics_ever mood depressive antideps_ever bipolar anxiety anxiolytics_ever childbehav   adhd_ever  if p_education == 1
+ci means    mental  substance schizpsychotic antipsychotics_ever mood depressive antideps_ever bipolar anxiety anxiolytics_ever childbehav   adhd_ever  if p_education == 0
+
+
+ttest Schiz_PGS, by (p_education)
+tabstat Schiz_PGS, by (p_education) stat (mean sd)
+
+ttest DEP6_PRS_scaled, by (p_education)
+tabstat DEP6_PRS_scaled, by (p_education) stat (mean sd)
+
+ttest ADHD_PRS, by (p_education)
+tabstat ADHD_PRS, by (p_education) stat (mean sd)
+
+ttest Neuroticism_PRS, by (p_education)
+tabstat Neuroticism_PRS, by (p_education) stat (mean sd)
+
+ttest Mood_disorder_spectrum_PRS, by (p_education)
+tabstat Mood_disorder_spectrum_PRS, by (p_education) stat (mean sd)
+
+ttest Risk_PGS, by (p_education)
+tabstat Risk_PGS, by (p_education) stat (mean sd)
+
+ttest Bipolar_disorder_PRS, by (p_education)
+tabstat Bipolar_disorder_PRS, by (p_education) stat (mean sd)
+
+*Replace unknown sex with random number
+count if missing( female )
+*175 individuals with unknown gender
+set seed 12345
+gen random_gender = runiform()
+replace  female = 0 if missing(female) & random_gender < .5
+replace  female = 1 if missing(female) & random_gender >= .5
+drop random_gender
+count if missing( female )
+
+*Duplicate PGS to simplify tables
+gen Schiz_PGS2 = Schiz_PGS
+gen Schiz_PGS3 = Schiz_PGS
+gen DEP6_PRS_scaled2 = DEP6_PRS_scaled
+gen ADHD_PRS2 = ADHD_PRS
+gen Neuroticism_PRS2 = Neuroticism_PRS
+
+*Main results
+********Phenotype differences model analyses
+**** BINARY Outcomes
+
+** Mental, any = Schiz_PGS
+
+phendiff  mental Schiz_PGS  , fam(famid)   res(female syntyv)
+estimates store bi_PDiffM11, title ("mental")
+*Run separate models and compare coefficients to study GxE
+phendiff  mental Schiz_PGS if p_education==0  , fam(famid)   res(female syntyv)
+estimates store bi_PDiffM12, title ("mental_Low_edu")
+
+scalar beta1 = _b[Schiz_PGS]
+scalar var_beta1 = _se[Schiz_PGS]^2
+phendiff  mental Schiz_PGS if p_education==1  , fam(famid)  res(female syntyv)
+estimates store bi_PDiffM13, title ("mental_High_edu")
+
+scalar beta2 = _b[Schiz_PGS]
+scalar var_beta2 = _se[Schiz_PGS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+
+*Substance = Risk PGS
+
+phendiff  substance Risk_PGS , fam(famid)   res(female syntyv)
+estimates store bi_PDiffM31, title ("substance")
+
+phendiff  substance Risk_PGS if p_education==0 , fam(famid)   res(female syntyv)
+estimates store bi_PDiffM32, title ("substance_Low_edu")
+
+scalar beta1 = _b[Risk_PGS]
+scalar var_beta1 = _se[Risk_PGS]^2
+phendiff  substance Risk_PGS if p_education==1 , fam(famid)   res(female syntyv)
+estimates store bi_PDiffM33, title ("substance_High_edu")
+
+scalar beta2 = _b[Risk_PGS]
+scalar var_beta2 = _se[Risk_PGS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+
+**Mood  = Mood_disorder_spectrum_PRS 
+
+phendiff  mood Mood_disorder_spectrum_PRS , fam(famid)   res(female syntyv)
+estimates store bi_PDiffM41, title ("mood")
+
+phendiff  mood Mood_disorder_spectrum_PRS if p_education==0 , fam(famid)   res(female syntyv)
+estimates store bi_PDiffM42, title ("mood_Low_edu")
+
+scalar beta1 = _b[Mood_disorder_spectrum_PRS]
+scalar var_beta1 = _se[Mood_disorder_spectrum_PRS]^2
+phendiff  mood Mood_disorder_spectrum_PRS if p_education==1 , fam(famid)   res(female syntyv)
+estimates store bi_PDiffM43, title ("mood_High_edu")
+
+scalar beta2 = _b[Mood_disorder_spectrum_PRS]
+scalar var_beta2 = _se[Mood_disorder_spectrum_PRS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Depression DEP6_PRS_scaled
+
+phendiff  depressive DEP6_PRS_scaled, fam(famid)  res(female syntyv)
+estimates store bi_PDiffM51, title ("Depression")
+
+phendiff  depressive DEP6_PRS_scaled if p_education==0, fam(famid)  res(female syntyv)
+estimates store bi_PDiffM52, title ("Depression_Low_edu")
+
+scalar beta1 = _b[DEP6_PRS_scaled]
+scalar var_beta1 = _se[DEP6_PRS_scaled]^2
+phendiff  depressive DEP6_PRS_scaled if p_education==1, fam(famid) res(female syntyv)
+estimates store bi_PDiffM53, title ("Depression_High_edu")
+
+scalar beta2 = _b[DEP6_PRS_scaled]
+scalar var_beta2 = _se[DEP6_PRS_scaled]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Bipolar = Bipolar_disorder_PRS
+
+phendiff  bipolar Bipolar_disorder_PRS, fam(famid)  res(female syntyv)
+estimates store bi_PDiffM61, title ("Bipolar")
+
+phendiff  bipolar Bipolar_disorder_PRS if p_education==0, fam(famid)   res(female syntyv)
+estimates store bi_PDiffM62, title ("Bipolar_Low_edu")
+
+scalar beta1 = _b[Bipolar_disorder_PRS]
+scalar var_beta1 = _se[Bipolar_disorder_PRS]^2
+phendiff  bipolar Bipolar_disorder_PRS if p_education==1, fam(famid)   res(female syntyv)
+estimates store bi_PDiffM63, title ("Bipolar_High_edu")
+
+scalar beta2 = _b[Bipolar_disorder_PRS]
+scalar var_beta2 = _se[Bipolar_disorder_PRS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Schizophrenia = Schiz_PGS 
+
+phendiff schizpsychotic Schiz_PGS2 , fam(famid)   res(female syntyv)
+estimates store bi_PDiffM71, title ("Schizophrenia")
+
+phendiff schizpsychotic Schiz_PGS2 if p_education==0 , fam(famid)   res(female syntyv)
+estimates store bi_PDiffM72, title ("Schizophrenia_Low_edu")
+
+scalar beta1 = _b[Schiz_PGS2]
+scalar var_beta1 = _se[Schiz_PGS2]^2
+phendiff schizpsychotic Schiz_PGS2 if p_education==1 , fam(famid)   res(female syntyv)
+estimates store bi_PDiffM73, title ("Schizophrenia_High_edu")
+
+scalar beta2 = _b[Schiz_PGS2]
+scalar var_beta2 = _se[Schiz_PGS2]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+**anxiety  = Neuroticism_PRS  
+
+phendiff  anxiety Neuroticism_PRS  , fam(famid)   res(female syntyv)
+estimates store bi_PDiffM81, title ("Anxienty")
+
+*Run separate models and compare coefficients to study GxE
+phendiff  anxiety Neuroticism_PRS if p_education==0 , fam(famid)  res(female syntyv)
+estimates store bi_PDiffM82, title ("Anxienty_Low_edu")
+
+*est store model1
+scalar beta1 = _b[Neuroticism_PRS]
+scalar var_beta1 = _se[Neuroticism_PRS]^2
+phendiff  anxiety Neuroticism_PRS if p_education==1 , fam(famid)   res(female syntyv)
+estimates store bi_PDiffM83, title ("Anxienty_High_edu")
+
+scalar beta2 = _b[Neuroticism_PRS]
+scalar var_beta2 = _se[Neuroticism_PRS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients would be significantly different
+*If Z is betweenn +- 1.96 coefs are NOT stat sig different. Crosscheck
+
+
+*ADHD
+phendiff   childbehav ADHD_PRS, fam(famid)   res(female syntyv)
+estimates store bi_PDiffM91, title ("ADHD")
+
+phendiff  childbehav ADHD_PRS if p_education==0, fam(famid)   res(female syntyv)
+estimates store bi_PDiffM92, title ("ADHD_Low_edu")
+
+scalar beta1 = _b[ADHD_PRS]
+scalar var_beta1 = _se[ADHD_PRS]^2
+phendiff  childbehav ADHD_PRS if p_education==1, fam(famid)   res(female syntyv)
+estimates store bi_PDiffM93, title ("ADHD_High_edu")
+
+scalar beta2 = _b[ADHD_PRS]
+scalar var_beta2 = _se[ADHD_PRS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Medication use
+
+*Antipsychotics
+phendiff antipsychotics_ever Schiz_PGS3 , fam(famid)  res(female syntyv)
+estimates store bi_PDiffM101, title ("Antipsychotics")
+
+phendiff antipsychotics_ever Schiz_PGS3 if p_education==0  , fam(famid)  res(female syntyv)
+estimates store bi_PDiffM102, title ("Antipsychotics_Low_edu")
+scalar beta1 = _b[Schiz_PGS3]
+scalar var_beta1 = _se[Schiz_PGS3]^2
+phendiff antipsychotics_ever Schiz_PGS3 if p_education==1  , fam(famid) res(female syntyv)  
+estimates store bi_PDiffM103, title ("Antipsychotics_High_edu")
+scalar beta2 = _b[Schiz_PGS3]
+scalar var_beta2 = _se[Schiz_PGS3]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Antidressants
+
+phendiff antideps_ever DEP6_PRS_scaled2 , fam(famid)  res(female syntyv)
+estimates store bi_PDiffM111, title ("Antidepressants")
+phendiff antideps_ever DEP6_PRS_scaled2 if p_education==0  , fam(famid)  res(female syntyv)
+estimates store bi_PDiffM112, title ("Antidepressants_Low_edu")
+
+scalar beta1 = _b[DEP6_PRS_scaled2]
+scalar var_beta1 = _se[DEP6_PRS_scaled2]^2
+phendiff antideps_ever DEP6_PRS_scaled2 if p_education==1  , fam(famid) res(female syntyv) 
+estimates store bi_PDiffM113, title ("Antidepressants_High_edu")
+
+scalar beta2 = _b[DEP6_PRS_scaled2]
+scalar var_beta2 = _se[DEP6_PRS_scaled2]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Anxiolytics
+
+phendiff anxiolytics_ever Neuroticism_PRS2 , fam(famid)  res(female syntyv)
+estimates store bi_PDiffM121, title ("Anxiolytics")
+
+phendiff anxiolytics_ever Neuroticism_PRS2 if p_education==0  , fam(famid)  res(female syntyv)
+estimates store bi_PDiffM122, title ("Anxiolytics_Low_edu")
+scalar beta1 = _b[Neuroticism_PRS2]
+scalar var_beta1 = _se[Neuroticism_PRS2]^2
+phendiff anxiolytics_ever Neuroticism_PRS2 if p_education==1  , fam(famid) res(female syntyv) 
+estimates store bi_PDiffM123, title ("Anxiolytics_High_edu")
+scalar beta2 = _b[Neuroticism_PRS2]
+scalar var_beta2 = _se[Neuroticism_PRS2]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Psychostimulants
+
+phendiff adhd_ever ADHD_PRS2 , fam(famid)  res(female syntyv)
+estimates store bi_PDiffM131, title ("Psychostimulants")
+phendiff adhd_ever ADHD_PRS2 if p_education==0  , fam(famid)  res(female syntyv)
+estimates store bi_PDiffM132, title ("Psychostimulants_Low_edu")
+
+scalar beta1 = _b[ADHD_PRS2]
+scalar var_beta1 = _se[ADHD_PRS2]^2
+phendiff adhd_ever ADHD_PRS2 if p_education==1  , fam(famid) res(female syntyv)
+estimates store bi_PDiffM133, title ("Psychostimulants_High_edu")
+
+scalar beta2 = _b[ADHD_PRS2]
+scalar var_beta2 = _se[ADHD_PRS2]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Create output table
+esttab bi_PDiffM11 bi_PDiffM12 bi_PDiffM13  bi_PDiffM31  bi_PDiffM32  bi_PDiffM33  bi_PDiffM41  bi_PDiffM42  bi_PDiffM43  bi_PDiffM51  bi_PDiffM52  bi_PDiffM53  bi_PDiffM61  bi_PDiffM62  bi_PDiffM63  bi_PDiffM71  bi_PDiffM72  bi_PDiffM73  bi_PDiffM81  bi_PDiffM82  bi_PDiffM83  bi_PDiffM91  bi_PDiffM92  bi_PDiffM93  bi_PDiffM101  bi_PDiffM102  bi_PDiffM103  bi_PDiffM111  bi_PDiffM112  bi_PDiffM113  bi_PDiffM121  bi_PDiffM122  bi_PDiffM123  bi_PDiffM131  bi_PDiffM132  bi_PDiffM133  ///
+using "W:\Henrik\binary_PDiffMmainalive_v5.csv", replace ///
+se stats(p  N r2  ) ///
+label nodepvars compress
+
+
+
+ 
+ ***Generational differences
+ ********phenotype differences model
+ 
+ *Diagnoses
+** Mental, any 	
+
+phendiff  mental Schiz_PGS  if generation==0, fam(famid)   res(female syntyv)
+estimates store PDiffM_11, title ("mental_old_cohort")
+
+phendiff  mental Schiz_PGS  if generation==1, fam(famid)   res(female syntyv)
+estimates store PDiffM_14, title ("mental_young_cohort")
+
+ 
+*Substance
+
+phendiff  substance Risk_PGS if generation== 0, fam(famid)   res(female syntyv)
+estimates store PDiffM_21, title ("substance_old_cohort")
+
+phendiff  substance Risk_PGS if generation== 1, fam(famid)   res(female syntyv)
+estimates store PDiffM_24, title ("substance_young_cohort")
+
+
+**Mood 
+
+phendiff  mood Mood_disorder_spectrum_PRS if generation== 0, fam(famid)   res(female syntyv)
+estimates store PDiffM_31, title ("mood_old_cohort")
+
+phendiff  mood Mood_disorder_spectrum_PRS if generation== 1, fam(famid)   res(female syntyv)
+estimates store PDiffM_34, title ("mood_young_cohort")
+
+
+*Depression
+
+phendiff  depressive DEP6_PRS_scaled  if generation== 0, fam(famid)  res(female syntyv)
+estimates store PDiffM_41, title ("Depression_old_cohort")
+
+phendiff  depressive DEP6_PRS_scaled  if generation== 1, fam(famid)  res(female syntyv)
+estimates store PDiffM_44, title ("Depression_young_cohort")
+
+
+*Bipolar
+
+phendiff  bipolar Bipolar_disorder_PRS if generation== 0, fam(famid)  res(female syntyv)
+estimates store PDiffM_51, title ("Bipolar_old_cohort")
+
+phendiff  bipolar Bipolar_disorder_PRS if generation== 1, fam(famid)  res(female syntyv)
+estimates store PDiffM_54, title ("Bipolar_young_cohort")
+
+
+*Schizophrenia
+
+phendiff schizpsychotic Schiz_PGS2 if generation== 0, fam(famid)   res(female syntyv)
+estimates store PDiffM_61, title ("Schizophrenia_old_cohort")
+
+phendiff schizpsychotic Schiz_PGS2 if generation== 1, fam(famid)   res(female syntyv)
+estimates store PDiffM_64, title ("Schizophrenia_young_cohort")
+
+
+**Anxiety
+
+phendiff  anxiety Neuroticism_PRS  if generation== 0, fam(famid)   res(female syntyv)
+estimates store PDiffM_71, title ("Anxienty_old_cohort")
+
+phendiff  anxiety Neuroticism_PRS  if generation== 1, fam(famid)   res(female syntyv)
+estimates store PDiffM_74, title ("Anxienty_young_cohort")
+
+
+*ADHD
+
+phendiff   childbehav ADHD_PRS if generation== 0, fam(famid)   res(female syntyv)
+estimates store PDiffM_81, title ("ADHD_old_cohort")
+
+phendiff   childbehav ADHD_PRS if generation== 1, fam(famid)   res(female syntyv)
+estimates store PDiffM_84, title ("ADHD_young_cohort")
+
+
+*Medication use
+
+*Antipsychotics
+
+phendiff antipsychotics_ever Schiz_PGS3  if generation== 0, fam(famid)  res(female syntyv)
+estimates store PDiffM_91, title ("Antipsychotics_old_cohort")
+
+phendiff antipsychotics_ever Schiz_PGS3  if generation== 1, fam(famid)  res(female syntyv)
+estimates store PDiffM_94, title ("Antipsychotics_young_cohort")
+
+
+**Antidepressants 
+
+phendiff antideps_ever DEP6_PRS_scaled2 if generation==0, fam(famid)  res(female syntyv)
+estimates store PDiffM_101, title ("Antidepressants_old_cohort")
+
+phendiff antideps_ever DEP6_PRS_scaled2 if generation==1, fam(famid)  res(female syntyv)
+estimates store PDiffM_104, title ("Antidepressants_young_cohort")
+
+
+*Anxiolytics
+
+phendiff anxiolytics_ever Neuroticism_PRS2 if generation==0, fam(famid)  res(female syntyv)
+estimates store PDiffM_111, title ("Anxiolytics_old_cohort")
+
+phendiff anxiolytics_ever Neuroticism_PRS2 if generation==1, fam(famid)  res(female syntyv)
+estimates store PDiffM_114, title ("Anxiolytics_young_cohort")
+
+
+*Psychostimulants 
+
+phendiff adhd_ever ADHD_PRS2 if generation==0, fam(famid)  res(female syntyv)
+estimates store PDiffM_121, title ("Psychostimulants_old_cohort")
+
+phendiff adhd_ever ADHD_PRS2 if generation==1, fam(famid)  res(female syntyv)
+estimates store PDiffM_124, title ("Psychostimulants_young_cohort")
+
+esttab PDiffM_11 PDiffM_14 PDiffM_21 PDiffM_24 PDiffM_31 PDiffM_34 PDiffM_41 PDiffM_44 PDiffM_51 PDiffM_54 PDiffM_61 PDiffM_64 PDiffM_71 PDiffM_74 PDiffM_81 PDiffM_84 PDiffM_91 PDiffM_94 PDiffM_101 PDiffM_104 PDiffM_111 PDiffM_114 PDiffM_121 PDiffM_124 using  "W:\Henrik\regression_results_PDiffM_genalive_v5.csv" , replace ///
+  se stats(p  N r2  ) ///
+ label nodepvars compress
+
+
+ 
+**Assortative mating
+*Diagnoses
+** Mental, any Schiz_PGS
+
+phendiff  mental Schiz_PGS  , fam(famid) rho(0.6)  res(female syntyv)
+estimates store as_PDiffM11, title ("mental")
+*Run separate models and compare coefficients to study GxE
+phendiff  mental Schiz_PGS if p_education==0  , fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM12, title ("mental_Low_edu")
+
+scalar beta1 = _b[Schiz_PGS]
+scalar var_beta1 = _se[Schiz_PGS]^2
+phendiff  mental Schiz_PGS if p_education==1  , fam(famid) rho(0.6)  res(female syntyv)
+estimates store as_PDiffM13, title ("mental_High_edu")
+
+scalar beta2 = _b[Schiz_PGS]
+scalar var_beta2 = _se[Schiz_PGS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+ 
+*Substance = Risk PGS
+
+phendiff  substance Risk_PGS , fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM31, title ("substance")
+
+phendiff  substance Risk_PGS if p_education==0 , fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM32, title ("substance_Low_edu")
+
+scalar beta1 = _b[Risk_PGS]
+scalar var_beta1 = _se[Risk_PGS]^2
+phendiff  substance Risk_PGS if p_education==1 , fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM33, title ("substance_High_edu")
+
+scalar beta2 = _b[Risk_PGS]
+scalar var_beta2 = _se[Risk_PGS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+**Mood  = Mood_disorder_spectrum_PRS
+ 
+phendiff  mood Mood_disorder_spectrum_PRS , fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM41, title ("mood")
+
+phendiff  mood Mood_disorder_spectrum_PRS if p_education==0 , fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM42, title ("mood_Low_edu")
+
+scalar beta1 = _b[Mood_disorder_spectrum_PRS]
+scalar var_beta1 = _se[Mood_disorder_spectrum_PRS]^2
+phendiff  mood Mood_disorder_spectrum_PRS if p_education==1 , fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM43, title ("mood_High_edu")
+
+scalar beta2 = _b[Mood_disorder_spectrum_PRS]
+scalar var_beta2 = _se[Mood_disorder_spectrum_PRS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Depression
+
+phendiff  depressive DEP6_PRS_scaled, fam(famid) rho(0.6)  res(female syntyv)
+estimates store as_PDiffM51, title ("Depression")
+
+phendiff  depressive DEP6_PRS_scaled if p_education==0, fam(famid) rho(0.6)  res(female syntyv)
+estimates store as_PDiffM52, title ("Depression_Low_edu")
+
+scalar beta1 = _b[DEP6_PRS_scaled]
+scalar var_beta1 = _se[DEP6_PRS_scaled]^2
+phendiff  depressive DEP6_PRS_scaled if p_education==1, fam(famid) rho(0.6) res(female syntyv)
+estimates store as_PDiffM53, title ("Depression_High_edu")
+
+scalar beta2 = _b[DEP6_PRS_scaled]
+scalar var_beta2 = _se[DEP6_PRS_scaled]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*bipolar
+
+phendiff  bipolar Bipolar_disorder_PRS, fam(famid) rho(0.6)  res(female syntyv)
+estimates store as_PDiffM61, title ("Bipolar")
+
+phendiff  bipolar Bipolar_disorder_PRS if p_education==0, fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM62, title ("Bipolar_Low_edu")
+
+scalar beta1 = _b[Bipolar_disorder_PRS]
+scalar var_beta1 = _se[Bipolar_disorder_PRS]^2
+phendiff  bipolar Bipolar_disorder_PRS if p_education==1, fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM63, title ("Bipolar_High_edu")
+
+scalar beta2 = _b[Bipolar_disorder_PRS]
+scalar var_beta2 = _se[Bipolar_disorder_PRS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Schizophrenia Schiz_PGS2
+ 
+phendiff schizpsychotic Schiz_PGS2 , fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM71, title ("Schizophrenia")
+
+phendiff schizpsychotic Schiz_PGS2 if p_education==0 , fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM72, title ("Schizophrenia_Low_edu")
+
+scalar beta1 = _b[Schiz_PGS2]
+scalar var_beta1 = _se[Schiz_PGS2]^2
+phendiff schizpsychotic Schiz_PGS2 if p_education==1 , fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM73, title ("Schizophrenia_High_edu")
+
+scalar beta2 = _b[Schiz_PGS2]
+scalar var_beta2 = _se[Schiz_PGS2]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+**Anxiety  Neuroticism_PRS  
+
+phendiff  anxiety Neuroticism_PRS  , fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM81, title ("Anxienty")
+
+*Run separate models and compare coefficients to study GxE
+phendiff  anxiety Neuroticism_PRS if p_education==0 , fam(famid) rho(0.6)  res(female syntyv)
+estimates store as_PDiffM82, title ("Anxienty_Low_edu")
+
+*est store model1
+scalar beta1 = _b[Neuroticism_PRS]
+scalar var_beta1 = _se[Neuroticism_PRS]^2
+phendiff  anxiety Neuroticism_PRS if p_education==1 , fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM83, title ("Anxienty_High_edu")
+
+scalar beta2 = _b[Neuroticism_PRS]
+scalar var_beta2 = _se[Neuroticism_PRS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients would be significantly different
+*If Z is betweenn +- 1.96 coefs are NOT stat sig different. Crosscheck
+
+
+*ADHD
+
+phendiff   childbehav ADHD_PRS, fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM91, title ("ADHD")
+
+phendiff  childbehav ADHD_PRS if p_education==0, fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM92, title ("ADHD_Low_edu")
+
+scalar beta1 = _b[ADHD_PRS]
+scalar var_beta1 = _se[ADHD_PRS]^2
+phendiff  childbehav ADHD_PRS if p_education==1, fam(famid) rho(0.6)   res(female syntyv)
+estimates store as_PDiffM93, title ("ADHD_High_edu")
+
+scalar beta2 = _b[ADHD_PRS]
+scalar var_beta2 = _se[ADHD_PRS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Medication use
+
+*Antipsychotics
+phendiff antipsychotics_ever Schiz_PGS3 , fam(famid) rho(0.6)  res(female syntyv)
+estimates store as_PDiffM101, title ("Antipsychotics")
+
+phendiff antipsychotics_ever Schiz_PGS3 if p_education==0  , fam(famid) rho(0.6)  res(female syntyv)
+estimates store as_PDiffM102, title ("Antipsychotics_Low_edu")
+scalar beta1 = _b[Schiz_PGS3]
+scalar var_beta1 = _se[Schiz_PGS3]^2
+phendiff antipsychotics_ever Schiz_PGS3 if p_education==1  , fam(famid) rho(0.6) res(female syntyv)  
+estimates store as_PDiffM103, title ("Antipsychotics_High_edu")
+scalar beta2 = _b[Schiz_PGS3]
+scalar var_beta2 = _se[Schiz_PGS3]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+*Antidepressants
+
+phendiff antideps_ever DEP6_PRS_scaled2 , fam(famid) rho(0.6)  res(female syntyv)
+estimates store as_PDiffM111, title ("Antidepressants")
+phendiff antideps_ever DEP6_PRS_scaled2 if p_education==0  , fam(famid) rho(0.6)  res(female syntyv)
+estimates store as_PDiffM112, title ("Antidepressants_Low_edu")
+
+scalar beta1 = _b[DEP6_PRS_scaled2]
+scalar var_beta1 = _se[DEP6_PRS_scaled2]^2
+phendiff antideps_ever DEP6_PRS_scaled2 if p_education==1  , fam(famid) rho(0.6) res(female syntyv) 
+estimates store as_PDiffM113, title ("Antidepressants_High_edu")
+
+scalar beta2 = _b[DEP6_PRS_scaled2]
+scalar var_beta2 = _se[DEP6_PRS_scaled2]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Anxiolytics
+phendiff anxiolytics_ever Neuroticism_PRS2 , fam(famid) rho(0.6)  res(female syntyv)
+estimates store as_PDiffM121, title ("Anxiolytics")
+
+phendiff anxiolytics_ever Neuroticism_PRS2 if p_education==0  , fam(famid) rho(0.6)  res(female syntyv)
+estimates store as_PDiffM122, title ("Anxiolytics_Low_edu")
+scalar beta1 = _b[Neuroticism_PRS2]
+scalar var_beta1 = _se[Neuroticism_PRS]^2
+phendiff anxiolytics_ever Neuroticism_PRS2 if p_education==1  , fam(famid) rho(0.6) res(female syntyv) 
+estimates store as_PDiffM123, title ("Anxiolytics_High_edu")
+scalar beta2 = _b[Neuroticism_PRS2]
+scalar var_beta2 = _se[Neuroticism_PRS2]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Psychostimulants
+
+phendiff adhd_ever ADHD_PRS2 , fam(famid) rho(0.6)  res(female syntyv)
+estimates store as_PDiffM131, title ("Psychostimulants")
+phendiff adhd_ever ADHD_PRS2 if p_education==0  , fam(famid) rho(0.6)  res(female syntyv)
+estimates store as_PDiffM132, title ("Psychostimulants_Low_edu")
+
+scalar beta1 = _b[ADHD_PRS2]
+scalar var_beta1 = _se[ADHD_PRS2]^2
+phendiff adhd_ever ADHD_PRS2 if p_education==1  , fam(famid) rho(0.6) res(female syntyv)
+estimates store as_PDiffM133, title ("Psychostimulants_High_edu")
+
+scalar beta2 = _b[ADHD_PRS2]
+scalar var_beta2 = _se[ADHD_PRS2]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+esttab as_PDiffM11 as_PDiffM12 as_PDiffM13  as_PDiffM31  as_PDiffM32  as_PDiffM33  as_PDiffM41  as_PDiffM42  as_PDiffM43  as_PDiffM51  as_PDiffM52  as_PDiffM53  as_PDiffM61  as_PDiffM62  as_PDiffM63  as_PDiffM71  as_PDiffM72  as_PDiffM73  as_PDiffM81  as_PDiffM82  as_PDiffM83  as_PDiffM91  as_PDiffM92  as_PDiffM93  as_PDiffM101  as_PDiffM102  as_PDiffM103  as_PDiffM111  as_PDiffM112  as_PDiffM113  as_PDiffM121  as_PDiffM122  as_PDiffM123  as_PDiffM131  as_PDiffM132  as_PDiffM133  ///
+ using "W:\Henrik\binary_PDiffM60alive_v5.csv", replace ///
+  se stats(p  N r2  ) ///
+ label nodepvars compress
+
+
+*Analyses with age of onset (continuous outcomes)
+
+*** Here it is important that there is no age difference at censoring. So first born healthy sibling's age is set at age of second born sibling.
+
+
+gen  age2022 = 2022 - syntyv 
+tab age2022
+ 
+sort famid  birthorder
+gen censor_age_sib = .
+by famid: replace censor_age_sib = age2022[_n+1] if birthorder == 1 & _N ==2
+by famid: replace censor_age_sib = age2022[_n-1] if birthorder == 2 & _N ==2
+tab censor_age_sib
+
+****Age at onset
+* Diagnosis free years until age of second born in 2022.
+gen ageonset_mental = a1st_mental - syntyv if a1st_mental != 0 
+summarize ageonset_mental
+replace ageonset_mental = 2022 - syntyv if a1st_mental == 0 & birthorder == 2
+replace ageonset_mental = censor_age_sib if a1st_mental == 0 & birthorder == 1
+
+summarize ageonset_mental
+tab ageonset_mental
+
+
+gen ageonset_substance = a1st_substance - syntyv if a1st_substance != 0 
+summarize ageonset_substance
+replace ageonset_substance = 2022 - syntyv if a1st_substance == 0 & birthorder == 2
+replace ageonset_substance = censor_age_sib if a1st_substance == 0 & birthorder == 1
+summarize ageonset_substance
+
+gen ageonset_schizpsychotic = a1st_schizpsychotic - syntyv if a1st_schizpsychotic != 0 
+summarize ageonset_schizpsychotic
+replace ageonset_schizpsychotic = 2022 - syntyv if a1st_schizpsychotic == 0 & birthorder == 2
+replace ageonset_schizpsychotic = censor_age_sib if a1st_schizpsychotic == 0 & birthorder == 1
+summarize ageonset_schizpsychotic
+rename ageonset_schizpsychotic ageonset_szpsy
+
+gen ageonset_mood = a1st_mood - syntyv if a1st_mood != 0 
+summarize ageonset_mood
+replace ageonset_mood = 2022 - syntyv if a1st_mood == 0 & birthorder == 2
+replace ageonset_mood = censor_age_sib if a1st_mood == 0 & birthorder == 1
+summarize ageonset_mood
+
+
+gen ageonset_anxiety = a1st_anxiety - syntyv if a1st_anxiety != 0 
+summarize ageonset_anxiety
+replace ageonset_anxiety = 2022 - syntyv if a1st_anxiety == 0 & birthorder == 2
+replace ageonset_anxiety = censor_age_sib if a1st_anxiety == 0 & birthorder == 1
+summarize ageonset_anxiety
+
+gen ageonset_depressive = a1st_depressive - syntyv if a1st_depressive != 0 
+summarize ageonset_depressive
+replace ageonset_depressive = 2022 - syntyv if a1st_depressive == 0 & birthorder == 2
+replace ageonset_depressive = censor_age_sib if a1st_depressive == 0 & birthorder == 1
+summarize ageonset_depressive
+
+gen ageonset_bipolar = a1st_bipolar - syntyv if a1st_bipolar != 0 
+summarize ageonset_bipolar
+replace ageonset_bipolar = 2022 - syntyv if a1st_bipolar == 0 & birthorder == 2
+replace ageonset_bipolar = censor_age_sib if a1st_bipolar == 0 & birthorder == 1
+summarize ageonset_bipolar
+
+gen ageonset_childbehav = a1st_childbehav - syntyv if a1st_childbehav != 0 
+summarize ageonset_childbehav
+replace ageonset_childbehav = 2022 - syntyv if a1st_childbehav == 0 & birthorder == 2
+replace ageonset_childbehav = censor_age_sib if a1st_childbehav == 0 & birthorder == 1
+summarize ageonset_childbehav
+
+ 
+
+********Phenotype differences model
+*Diagnoses
+
+** Mental, any Schiz_PGS	
+
+phendiff ageonset_mental Schiz_PGS   , fam(famid)   res(female ) 
+estimates store PDiffM11, title ("mental")
+*Run seoarate models and compare coefficients to study GxE
+phendiff ageonset_mental Schiz_PGS if p_education==0  , fam(famid)   res(female ) 
+estimates store PDiffM12, title ("mental_Low_edu")
+
+scalar beta1 = _b[Schiz_PGS]
+scalar var_beta1 = _se[Schiz_PGS]^2
+phendiff ageonset_mental Schiz_PGS if p_education==1  , fam(famid)  res(female  ) 
+estimates store PDiffM13, title ("mental_High_edu")
+
+scalar beta2 = _b[Schiz_PGS]
+scalar var_beta2 = _se[Schiz_PGS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Substance = Risk PGS
+
+phendiff ageonset_substance Risk_PGS  , fam(famid)   res(female )
+estimates store PDiffM31, title ("substance")
+
+phendiff ageonset_substance Risk_PGS  if p_education==0 , fam(famid)   res(female )
+estimates store PDiffM32, title ("substance_Low_edu")
+
+scalar beta1 = _b[Risk_PGS ]
+scalar var_beta1 = _se[Risk_PGS ]^2
+phendiff ageonset_substance Risk_PGS  if p_education==1 , fam(famid)   res(female )
+estimates store PDiffM33, title ("substance_High_edu")
+
+scalar beta2 = _b[Risk_PGS ]
+scalar var_beta2 = _se[Risk_PGS ]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+**Mood  = Mood_disorder_spectrum_PRS 
+
+phendiff ageonset_mood Mood_disorder_spectrum_PRS , fam(famid)   res(female )
+estimates store PDiffM41, title ("mood")
+
+phendiff ageonset_mood Mood_disorder_spectrum_PRS if p_education==0 , fam(famid)   res(female )
+estimates store PDiffM42, title ("mood_Low_edu")
+
+scalar beta1 = _b[Mood_disorder_spectrum_PRS]
+scalar var_beta1 = _se[Mood_disorder_spectrum_PRS]^2
+phendiff ageonset_mood Mood_disorder_spectrum_PRS if p_education==1 , fam(famid)   res(female )
+estimates store PDiffM43, title ("mood_High_edu")
+
+scalar beta2 = _b[Mood_disorder_spectrum_PRS]
+scalar var_beta2 = _se[Mood_disorder_spectrum_PRS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Depression
+
+replace Depression_PRS = DEP6_PRS_scaled
+
+phendiff ageonset_depressive Depression_PRS, fam(famid)  res(female )
+estimates store PDiffM51, title ("Depression")
+
+phendiff ageonset_depressive Depression_PRS if p_education==0, fam(famid)  res(female )
+estimates store PDiffM52, title ("Depression_Low_edu")
+
+scalar beta1 = _b[Depression_PRS]
+scalar var_beta1 = _se[Depression_PRS]^2
+phendiff ageonset_depressive Depression_PRS if p_education==1, fam(famid) res(female )
+estimates store PDiffM53, title ("Depression_High_edu")
+
+scalar beta2 = _b[Depression_PRS]
+scalar var_beta2 = _se[Depression_PRS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Bipolar
+
+phendiff ageonset_bipolar Bipolar_disorder_PRS, fam(famid)  res(female )
+estimates store PDiffM61, title ("Bipolar")
+
+phendiff ageonset_bipolar Bipolar_disorder_PRS if p_education==0, fam(famid)   res(female )
+estimates store PDiffM62, title ("Bipolar_Low_edu")
+
+scalar beta1 = _b[Bipolar_disorder_PRS]
+scalar var_beta1 = _se[Bipolar_disorder_PRS]^2
+phendiff ageonset_bipolar Bipolar_disorder_PRS if p_education==1, fam(famid)   res(female )
+estimates store PDiffM63, title ("Bipolar_High_edu")
+
+scalar beta2 = _b[Bipolar_disorder_PRS]
+scalar var_beta2 = _se[Bipolar_disorder_PRS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Schizophrenia Schiz_PGS 
+
+phendiff ageonset_szpsy Schiz_PGS , fam(famid)   res(female )
+estimates store PDiffM71, title ("Schizophrenia")
+
+phendiff ageonset_szpsy Schiz_PGS if p_education==0 , fam(famid)   res(female )
+estimates store PDiffM72, title ("Schizophrenia_Low_edu")
+
+scalar beta1 = _b[Schiz_PGS]
+scalar var_beta1 = _se[Schiz_PGS]^2
+phendiff ageonset_szpsy Schiz_PGS if p_education==1 , fam(famid)   res(female )
+estimates store PDiffM73, title ("Schizophrenia_High_edu")
+
+scalar beta2 = _b[Schiz_PGS]
+scalar var_beta2 = _se[Schiz_PGS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+**Anxiety  Neuroticism_PRS  
+
+phendiff ageonset_anxiety Neuroticism_PRS  , fam(famid)   res(female )
+estimates store PDiffM81, title ("Anxienty")
+
+*Run seoarate models and compare coefficients to study GxE
+phendiff ageonset_anxiety Neuroticism_PRS if p_education==0 , fam(famid)  res(female )
+estimates store PDiffM82, title ("Anxienty_Low_edu")
+
+*est store model1
+scalar beta1 = _b[Neuroticism_PRS]
+scalar var_beta1 = _se[Neuroticism_PRS]^2
+phendiff ageonset_anxiety Neuroticism_PRS if p_education==1 , fam(famid)   res(female )
+estimates store PDiffM83, title ("Anxienty_High_edu")
+
+scalar beta2 = _b[Neuroticism_PRS]
+scalar var_beta2 = _se[Neuroticism_PRS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients would be significantly different
+*If Z is betweenn +- 1.96 coefs are NOT stat sig different. Crosscheck
+
+
+*ADHD
+
+phendiff  ageonset_childbehav ADHD_PRS, fam(famid)   res(female )
+estimates store PDiffM91, title ("ADHD")
+
+phendiff ageonset_childbehav ADHD_PRS if p_education==0, fam(famid)   res(female )
+estimates store PDiffM92, title ("ADHD_Low_edu")
+
+scalar beta1 = _b[ADHD_PRS]
+scalar var_beta1 = _se[ADHD_PRS]^2
+phendiff ageonset_childbehav ADHD_PRS if p_education==1, fam(famid)   res(female )
+estimates store PDiffM93, title ("ADHD_High_edu")
+
+scalar beta2 = _b[ADHD_PRS]
+scalar var_beta2 = _se[ADHD_PRS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+***This is to scale the observed years of medication use by the years with kela data available
+gen dantipsychotics = (antipsychotics_total -1) / yearkela
+tab dantipsychotics
+gen danxiolytics = (anxiolytics_total -1) / yearkela
+tab danxiolytics
+gen dadhd = (adhd_total -1) / yearkela
+tab dadhd
+gen dantideps = (antideps_total -1) / yearkela
+tab dantideps
+****Here, no log transforming.
+
+*Medication use
+
+*Antipsychotics 
+
+phendiff dantipsychotics Schiz_PGS , fam(famid)  res(female )
+estimates store PDiffM101, title ("Antipsychotics")
+
+phendiff dantipsychotics Schiz_PGS if p_education==0  , fam(famid)  res(female )
+estimates store PDiffM102, title ("Antipsychotics_Low_edu")
+scalar beta1 = _b[Schiz_PGS]
+scalar var_beta1 = _se[Schiz_PGS]^2
+phendiff dantipsychotics Schiz_PGS if p_education==1  , fam(famid) res(female )  
+estimates store PDiffM103, title ("Antipsychotics_High_edu")
+scalar beta2 = _b[Schiz_PGS]
+scalar var_beta2 = _se[Schiz_PGS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Antideps 
+
+phendiff dantideps Depression_PRS , fam(famid)  res(female )
+estimates store PDiffM111, title ("Antidepressives")
+phendiff dantideps Depression_PRS if p_education==0  , fam(famid)  res(female )
+estimates store PDiffM112, title ("Antidepressives_Low_edu")
+
+scalar beta1 = _b[Depression_PRS]
+scalar var_beta1 = _se[Depression_PRS]^2
+phendiff dantideps Depression_PRS if p_education==1  , fam(famid) res(female ) 
+estimates store PDiffM113, title ("Antidepressives_High_edu")
+
+scalar beta2 = _b[Depression_PRS]
+scalar var_beta2 = _se[Depression_PRS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Anxiolytics
+
+phendiff danxiolytics Neuroticism_PRS , fam(famid)  res(female )
+estimates store PDiffM121, title ("Anxiolytics")
+
+phendiff danxiolytics Neuroticism_PRS if p_education==0  , fam(famid)  res(female )
+estimates store PDiffM122, title ("Anxiolytics_Low_edu")
+scalar beta1 = _b[Neuroticism_PRS]
+scalar var_beta1 = _se[Neuroticism_PRS]^2
+phendiff danxiolytics Neuroticism_PRS if p_education==1  , fam(famid) res(female ) 
+estimates store PDiffM123, title ("Anxiolytics_High_edu")
+scalar beta2 = _b[Neuroticism_PRS]
+scalar var_beta2 = _se[Neuroticism_PRS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+*Psychostimulants
+
+phendiff dadhd ADHD_PRS , fam(famid)  res(female )
+estimates store PDiffM131, title ("ADHD_drugs")
+phendiff dadhd ADHD_PRS if p_education==0  , fam(famid)  res(female )
+estimates store PDiffM132, title ("ADHD_drugs_Low_edu")
+
+scalar beta1 = _b[ADHD_PRS]
+scalar var_beta1 = _se[ADHD_PRS]^2
+phendiff dadhd ADHD_PRS if p_education==1  , fam(famid) res(female )
+estimates store PDiffM133, title ("ADHD_drugs_High_edu")
+
+scalar beta2 = _b[ADHD_PRS]
+scalar var_beta2 = _se[ADHD_PRS]^2
+// Compute Z-score 
+scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
+display "Z = " z
+*If Z is >1.96 or <-.196 coefficients NOT significantly different
+*If Z is betweenn +- 1.96 coefs are different. 
+
+
+esttab PDiffM11 PDiffM12 PDiffM13  PDiffM31  PDiffM32  PDiffM33  PDiffM41  PDiffM42  PDiffM43  PDiffM51  PDiffM52  PDiffM53  PDiffM61  PDiffM62  PDiffM63  PDiffM71  PDiffM72  PDiffM73  PDiffM81  PDiffM82  PDiffM83  PDiffM91  PDiffM92  PDiffM93  PDiffM101  PDiffM102  PDiffM103  PDiffM111  PDiffM112  PDiffM113  PDiffM121  PDiffM122  PDiffM123  PDiffM131  PDiffM132  PDiffM133  ///
+ using "W:\Henrik\onset_PDiffMaliveD_v5.csv", replace ///
+  se stats(p  N r2  ) ///
+ label nodepvars compress
+
+ 
+
+ 
+*****Bootstrapping example
+*** not performed in the main paper because f-test already conclusive
+
+*Any mental
+//bootstrapping
+//define a loop to compare coeffs/ 
+capture program drop compare_coeffs
+program define  compare_coeffs, rclass
+phendiff  mental Schiz_PGS if p_education==1  , fam(famid)   res(female syntyv)
+tempvar beta1a
+scalar beta1a = _b[Schiz_PGS]
+phendiff  mental Schiz_PGS if p_education==2 , fam(famid)   res(female syntyv)
+tempvar beta2a
+scalar beta2a = _b[Schiz_PGS]
+return scalar diffa = beta1a-beta2a
+end
+bootstrap r(diffa), reps(1000): compare_coeffs
+
+
+  
+****between-families prediction
+*these analyses are conducted in a separate sample 40/120k 2015 and code can be found in a separate script 
