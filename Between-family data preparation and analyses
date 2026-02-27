@@ -56,10 +56,6 @@ rename EA_OkbayExclFinnGen_PRS_scaled   EA_PGS
 	gen edu_edu     = EA_PGS * p_education 
     gen edu_adhd    = ADHD_PRS * p_education
 	
-*Logarithmic version of total psychotropic medication costs in years
-gen      medcostl = 1 if  years_psychotropicmed == .
-replace  medcostl = years_psychotropicmed  if years_psychotropicmed != .
-gen      lmedcost = log(medcostl)
 
 *Combine psychotropic and schizzophrenia diagnoses to match original GWAS
 gen     a1st_schizpsychotic = a1st_psychotic
@@ -100,6 +96,7 @@ summarize mental substance schizpsychotic antipsychotics_ever mood depressive an
 merge 1:1 shnro using "W:\weight_project\Corrected_Weights\weights_prs.dta" , keep(match master) nogen 
 
 sort  weights
+summarize weights, detail
 gen   w_trim = weights
 local low    = r(p1)
 local high   = r(p99)
@@ -122,11 +119,11 @@ regress  mental Schiz_PGS syntyv   i.female [pweight = w_final]
 estimates store model21, title ("mental")
 
 *with controls 
-regress  mental Schiz_PGS syntyv   i.female  i.p_mental i.p_education   i.genesample  i.smkunta  i.smkunta C1-C10  [pweight = w_final]
+regress  mental Schiz_PGS syntyv   i.female  i.p_mental i.p_education   i.genesample  i.smkunta C1-C10  [pweight = w_final]
 estimates store model22, title ("mental")
 
 *naive GxE
-regress  mental Schiz_PGS syntyv   i.female  i.p_mental i.p_education   i.genesample  i.smkunta  i.smkunta  C1-C10  edu_schiz  [pweight = w_final]
+regress  mental Schiz_PGS syntyv   i.female  i.p_mental i.p_education   i.genesample  i.smkunta  C1-C10  edu_schiz  [pweight = w_final]
 estimates store model23, title ("mental")
 
 
