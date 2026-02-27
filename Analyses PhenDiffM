@@ -172,8 +172,8 @@ scalar var_beta2 = _se[Schiz_PGS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+*If Z is >1.96 or <-1.96 coefficients NOT significantly different
+*If Z is larger than +- 1.96 coefs are different. 
 
 
 
@@ -195,8 +195,6 @@ scalar var_beta2 = _se[Risk_PGS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
 
 
 
@@ -218,8 +216,6 @@ scalar var_beta2 = _se[Mood_disorder_spectrum_PRS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
 
 
 *Depression DEP6_PRS_scaled
@@ -240,8 +236,7 @@ scalar var_beta2 = _se[DEP6_PRS_scaled]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Bipolar = Bipolar_disorder_PRS
@@ -262,8 +257,7 @@ scalar var_beta2 = _se[Bipolar_disorder_PRS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Schizophrenia = Schiz_PGS 
@@ -284,8 +278,7 @@ scalar var_beta2 = _se[Schiz_PGS2]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 **anxiety  = Neuroticism_PRS  
@@ -308,8 +301,7 @@ scalar var_beta2 = _se[Neuroticism_PRS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients would be significantly different
-*If Z is betweenn +- 1.96 coefs are NOT stat sig different. Crosscheck
+
 
 
 *ADHD
@@ -329,8 +321,7 @@ scalar var_beta2 = _se[ADHD_PRS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Medication use
@@ -350,8 +341,7 @@ scalar var_beta2 = _se[Schiz_PGS3]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Antidressants
@@ -371,8 +361,7 @@ scalar var_beta2 = _se[DEP6_PRS_scaled2]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Anxiolytics
@@ -391,8 +380,7 @@ scalar var_beta2 = _se[Neuroticism_PRS2]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Psychostimulants
@@ -412,8 +400,7 @@ scalar var_beta2 = _se[ADHD_PRS2]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Create output table
@@ -564,8 +551,8 @@ scalar var_beta2 = _se[Schiz_PGS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+*If Z is >1.96 or <-1.96 coefficients NOT significantly different
+*If Z is larger than +- 1.96 coefs are different. 
 
  
 *Substance = Risk PGS
@@ -586,8 +573,7 @@ scalar var_beta2 = _se[Risk_PGS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 **Mood  = Mood_disorder_spectrum_PRS
@@ -608,8 +594,6 @@ scalar var_beta2 = _se[Mood_disorder_spectrum_PRS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
 
 
 *Depression
@@ -630,8 +614,7 @@ scalar var_beta2 = _se[DEP6_PRS_scaled]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *bipolar
@@ -652,8 +635,7 @@ scalar var_beta2 = _se[Bipolar_disorder_PRS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Schizophrenia Schiz_PGS2
@@ -674,8 +656,7 @@ scalar var_beta2 = _se[Schiz_PGS2]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 **Anxiety  Neuroticism_PRS  
@@ -698,8 +679,7 @@ scalar var_beta2 = _se[Neuroticism_PRS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients would be significantly different
-*If Z is betweenn +- 1.96 coefs are NOT stat sig different. Crosscheck
+
 
 
 *ADHD
@@ -720,8 +700,7 @@ scalar var_beta2 = _se[ADHD_PRS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Medication use
@@ -741,8 +720,7 @@ scalar var_beta2 = _se[Schiz_PGS3]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 *Antidepressants
 
@@ -761,8 +739,7 @@ scalar var_beta2 = _se[DEP6_PRS_scaled2]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Anxiolytics
@@ -780,8 +757,7 @@ scalar var_beta2 = _se[Neuroticism_PRS2]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Psychostimulants
@@ -801,8 +777,7 @@ scalar var_beta2 = _se[ADHD_PRS2]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 esttab as_PDiffM11 as_PDiffM12 as_PDiffM13  as_PDiffM31  as_PDiffM32  as_PDiffM33  as_PDiffM41  as_PDiffM42  as_PDiffM43  as_PDiffM51  as_PDiffM52  as_PDiffM53  as_PDiffM61  as_PDiffM62  as_PDiffM63  as_PDiffM71  as_PDiffM72  as_PDiffM73  as_PDiffM81  as_PDiffM82  as_PDiffM83  as_PDiffM91  as_PDiffM92  as_PDiffM93  as_PDiffM101  as_PDiffM102  as_PDiffM103  as_PDiffM111  as_PDiffM112  as_PDiffM113  as_PDiffM121  as_PDiffM122  as_PDiffM123  as_PDiffM131  as_PDiffM132  as_PDiffM133  ///
@@ -903,8 +878,7 @@ scalar var_beta2 = _se[Schiz_PGS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Substance = Risk PGS
@@ -925,8 +899,7 @@ scalar var_beta2 = _se[Risk_PGS ]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 **Mood  = Mood_disorder_spectrum_PRS 
@@ -947,8 +920,7 @@ scalar var_beta2 = _se[Mood_disorder_spectrum_PRS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Depression
@@ -971,8 +943,7 @@ scalar var_beta2 = _se[Depression_PRS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Bipolar
@@ -993,8 +964,7 @@ scalar var_beta2 = _se[Bipolar_disorder_PRS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Schizophrenia Schiz_PGS 
@@ -1015,8 +985,7 @@ scalar var_beta2 = _se[Schiz_PGS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 **Anxiety  Neuroticism_PRS  
@@ -1039,8 +1008,7 @@ scalar var_beta2 = _se[Neuroticism_PRS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients would be significantly different
-*If Z is betweenn +- 1.96 coefs are NOT stat sig different. Crosscheck
+
 
 
 *ADHD
@@ -1061,8 +1029,7 @@ scalar var_beta2 = _se[ADHD_PRS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 ***This is to scale the observed years of medication use by the years with kela data available
@@ -1094,8 +1061,7 @@ scalar var_beta2 = _se[Schiz_PGS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Antideps 
@@ -1115,8 +1081,7 @@ scalar var_beta2 = _se[Depression_PRS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Anxiolytics
@@ -1135,8 +1100,7 @@ scalar var_beta2 = _se[Neuroticism_PRS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 *Psychostimulants
@@ -1156,8 +1120,7 @@ scalar var_beta2 = _se[ADHD_PRS]^2
 // Compute Z-score 
 scalar z = (beta1-beta2)/sqrt(var_beta1 + var_beta2)
 display "Z = " z
-*If Z is >1.96 or <-.196 coefficients NOT significantly different
-*If Z is betweenn +- 1.96 coefs are different. 
+
 
 
 esttab PDiffM11 PDiffM12 PDiffM13  PDiffM31  PDiffM32  PDiffM33  PDiffM41  PDiffM42  PDiffM43  PDiffM51  PDiffM52  PDiffM53  PDiffM61  PDiffM62  PDiffM63  PDiffM71  PDiffM72  PDiffM73  PDiffM81  PDiffM82  PDiffM83  PDiffM91  PDiffM92  PDiffM93  PDiffM101  PDiffM102  PDiffM103  PDiffM111  PDiffM112  PDiffM113  PDiffM121  PDiffM122  PDiffM123  PDiffM131  PDiffM132  PDiffM133  ///
