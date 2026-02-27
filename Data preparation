@@ -99,6 +99,7 @@ merge 1:1 shnro using "W:\Henrik\updatedPGSshort.dta", keep (master match) nogen
 drop shetu ft17_otos_osite ft17_otos_ryvas w_perus_tervtark_ana OSITE RYVAS PAINOT_UNIONI ALL_ANALYSIS_W yearofbirth child_shnro 
 
 *Select randomly genotyped sibling
+set seed 12345
 gen random_no = runiform() if PGS_sum > 1  & PRS == 1 
 tab random_no
 bysort  famid : egen random_rank =rank(random_no), field
