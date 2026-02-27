@@ -749,7 +749,7 @@ estimates store as_PDiffM121, title ("Anxiolytics")
 phendiff anxiolytics_ever Neuroticism_PRS2 if p_education==0  , fam(famid) rho(0.6)  res(female syntyv)
 estimates store as_PDiffM122, title ("Anxiolytics_Low_edu")
 scalar beta1 = _b[Neuroticism_PRS2]
-scalar var_beta1 = _se[Neuroticism_PRS]^2
+scalar var_beta1 = _se[Neuroticism_PRS2]^2
 phendiff anxiolytics_ever Neuroticism_PRS2 if p_education==1  , fam(famid) rho(0.6) res(female syntyv) 
 estimates store as_PDiffM123, title ("Anxiolytics_High_edu")
 scalar beta2 = _b[Neuroticism_PRS2]
